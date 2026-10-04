@@ -1,0 +1,6 @@
+{
+  "name": "Clothing Store & MySQL Database Designer",
+  "description": "متجر ملابس وإكسسوارات متكامل مع لوحة تحكم ومحاكاة تفاعلية لتصميم قاعدة بيانات MySQL احترافية من إعداد كامل أبو سمرة.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
