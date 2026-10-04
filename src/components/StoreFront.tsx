@@ -21,10 +21,17 @@ import {
   CreditCard,
   FileText,
   Sparkles,
-  Info
+  Info,
+  Edit2,
+  Archive,
+  ShieldCheck,
+  CheckCircle2,
+  AlertCircle,
+  Sliders,
+  Eye
 } from "lucide-react";
-import { Product, Category, CartItem, Coupon, ActivityLog, Review } from "../types";
-import { SAMPLE_PRODUCTS, SAMPLE_CATEGORIES, SAMPLE_COUPONS, INITIAL_PRODUCT_REVIEWS } from "../dbSchemaData";
+import { Product, Category, CartItem, Coupon, ActivityLog, Review, PurchaseCode } from "../types";
+import { SAMPLE_CATEGORIES, INITIAL_PRODUCT_REVIEWS } from "../dbSchemaData";
 
 interface StoreFrontProps {
   siteConfig: {
@@ -33,6 +40,12 @@ interface StoreFrontProps {
     heroTitle: string;
     heroSubtitle: string;
   };
+  products: Product[];
+  setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
+  coupons: Coupon[];
+  purchaseCodes: PurchaseCode[];
+  onConsumePurchaseCode: (code: string) => void;
+  isAdmin: boolean;
   onAddActivity: (action: string, details: string) => void;
   onSimulateOrderCreation: (orderData: {
     customerName: string;
@@ -54,12 +67,17 @@ interface StoreFrontProps {
 
 export default function StoreFront({ 
   siteConfig, 
+  products,
+  setProducts,
+  coupons,
+  purchaseCodes,
+  onConsumePurchaseCode,
+  isAdmin,
   onAddActivity, 
   onSimulateOrderCreation,
   isAddProductOpen,
   onCloseAddProduct 
 }: StoreFrontProps) {
-  const [products, setProducts] = useState<Product[]>(SAMPLE_PRODUCTS);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"default" | "price-asc" | "price-desc" | "rating">("default");
@@ -69,13 +87,31 @@ export default function StoreFront({
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [appliedPurchaseCode, setAppliedPurchaseCode] = useState<PurchaseCode | null>(null);
   const [couponError, setCouponError] = useState("");
+  const [cartToast, setCartToast] = useState<{ visible: boolean; name: string } | null>(null);
 
   // Product Detail States
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [selectedSize, setSelectedSize] = useState("");
   const [selectedColor, setSelectedColor] = useState("");
+
+  // Admin Editing Product States
+  const [isEditingProduct, setIsEditingProduct] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editCategoryId, setEditCategoryId] = useState<number>(1);
+  const [editPrice, setEditPrice] = useState("");
+  const [editComparePrice, setEditComparePrice] = useState("");
+  const [editDiscount, setEditDiscount] = useState("");
+  const [editStock, setEditStock] = useState("");
+  const [editSku, setEditSku] = useState("");
+  const [editImageUrl, setEditImageUrl] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editSpecifications, setEditSpecifications] = useState("");
+  const [editColors, setEditColors] = useState("");
+  const [editSizes, setEditSizes] = useState("");
+  const [editSuccessNotice, setEditSuccessNotice] = useState(false);
 
   // Checkout States
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -108,6 +144,7 @@ export default function StoreFront({
   const [newProdCategoryId, setNewProdCategoryId] = useState<number>(1);
   const [newProdPrice, setNewProdPrice] = useState<string>("");
   const [newProdComparePrice, setNewProdComparePrice] = useState<string>("");
+  const [newProdDiscount, setNewProdDiscount] = useState<string>("");
   const [newProdStock, setNewProdStock] = useState<string>("15");
   const [newProdSku, setNewProdSku] = useState("");
   const [newProdImageUrl, setNewProdImageUrl] = useState("");
@@ -123,8 +160,9 @@ export default function StoreFront({
     }
   }, [isAddProductOpen]);
 
-  // Filter and Sort Logic
+  // Filter and Sort Logic (Hiding archived products)
   const filteredProducts = products.filter(p => {
+    if (p.is_archived) return false;
     const matchesCategory = selectedCategory === null || p.category_id === selectedCategory;
     const matchesSearch = p.product_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           p.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -136,6 +174,9 @@ export default function StoreFront({
     if (sortBy === "rating") return b.rating - a.rating;
     return 0; // Default ID sort
   });
+
+  // Featured Marquee products
+  const marqueeProducts = products.filter(p => !p.is_archived && p.is_featured_marquee);
 
   // Cart operations
   const handleAddToCart = (product: Product, size?: string, color?: string) => {
@@ -156,6 +197,7 @@ export default function StoreFront({
         onAddActivity("UPDATE_CART", `تم زيادة كمية المنتج "${product.product_name}" في السلة.`);
       } else {
         alert("عذراً، لقد تجاوزت الكمية المتاحة في المخزون حالياً لهذا المنتج.");
+        return;
       }
     } else {
       setCart([...cart, {
@@ -167,6 +209,12 @@ export default function StoreFront({
       }]);
       onAddActivity("ADD_TO_CART", `تم إضافة المنتج "${product.product_name}" إلى السلة.`);
     }
+
+    // Trigger visual toast confirmation
+    setCartToast({ visible: true, name: product.product_name });
+    setTimeout(() => {
+      setCartToast(null);
+    }, 3200);
   };
 
   const updateCartQty = (id: number, delta: number) => {
@@ -187,36 +235,69 @@ export default function StoreFront({
     onAddActivity("REMOVE_FROM_CART", `تم إزالة المنتج "${prodName}" من السلة.`);
   };
 
-  // Coupon application
+  // Coupon and 100% Purchase code application
   const applyCoupon = () => {
     setCouponError("");
-    const coupon = SAMPLE_COUPONS.find(c => c.coupon_code.toUpperCase() === couponCode.trim().toUpperCase());
-    
-    if (!coupon) {
-      setCouponError("كوبون الخصم غير صحيح أو منتهي الصلاحية.");
+    const cleanedCode = couponCode.trim().toUpperCase();
+    if (!cleanedCode) return;
+
+    // 1. Check if it matches a 100% single-use purchase code
+    const foundPurchaseCode = purchaseCodes.find(pc => pc.code.toUpperCase() === cleanedCode && !pc.is_used);
+    if (foundPurchaseCode) {
+      setAppliedPurchaseCode(foundPurchaseCode);
+      setAppliedCoupon(null);
+      onAddActivity("APPLY_PURCHASE_CODE", `تم تطبيق كود الشراء المجاني 100%: ${foundPurchaseCode.code}`);
       return;
     }
 
-    const subtotal = cart.reduce((acc, curr) => acc + (curr.product.price * curr.quantity), 0);
-    if (subtotal < coupon.min_order_amount) {
+    // 2. Check standard coupon
+    const coupon = coupons.find(c => c.coupon_code.toUpperCase() === cleanedCode);
+    
+    if (!coupon) {
+      setCouponError("كود الخصم أو كود الشراء غير صحيح أو تم استخدامه مسبقاً.");
+      return;
+    }
+
+    if (!coupon.is_active) {
+      setCouponError("عذراً، هذا الكوبون معطل حالياً من قبل الإدارة.");
+      return;
+    }
+
+    const currentSubtotal = cart.reduce((acc, curr) => acc + (curr.product.price * curr.quantity), 0);
+    if (currentSubtotal < coupon.min_order_amount) {
       setCouponError(`هذا الكوبون يتطلب حداً أدنى للشراء يبلغ $${coupon.min_order_amount}`);
       return;
     }
 
     setAppliedCoupon(coupon);
-    onAddActivity("APPLY_COUPON", `تم تطبيق كوبون الخصم "${coupon.coupon_code}" وحسم قيمة الخصم من الفاتورة.`);
+    setAppliedPurchaseCode(null);
+    onAddActivity("APPLY_COUPON", `تم تطبيق كوبون الخصم "${coupon.coupon_code}".`);
   };
 
-  // Calculations
+  // Calculations with Maximum Discount Limit Cap & 100% Purchase code
   const subtotal = cart.reduce((acc, curr) => acc + (curr.product.price * curr.quantity), 0);
-  const discount = appliedCoupon 
-    ? (appliedCoupon.discount_type === "percentage" 
-        ? (subtotal * appliedCoupon.discount_value / 100) 
-        : appliedCoupon.discount_value)
-    : 0;
-  const shippingCost = subtotal > 150 ? 0 : 15;
-  const tax = (subtotal - discount) * 0.15; // 15% VAT
-  const grandTotal = Math.max(0, subtotal - discount + shippingCost + tax);
+  let discount = 0;
+  let discountNotice = "";
+
+  if (appliedPurchaseCode) {
+    // 100% single-use discount
+    discount = subtotal;
+    discountNotice = "كود شراء VIP (خصم 100% مجاناً)";
+  } else if (appliedCoupon) {
+    const rawDiscount = (subtotal * appliedCoupon.discount_value) / 100;
+    if (appliedCoupon.max_discount_amount && rawDiscount > appliedCoupon.max_discount_amount) {
+      discount = appliedCoupon.max_discount_amount;
+      discountNotice = `خصم ${appliedCoupon.discount_value}% (تطبيق الحد الأقصى ${appliedCoupon.max_discount_amount}$)`;
+    } else {
+      discount = rawDiscount;
+      discountNotice = `خصم ${appliedCoupon.discount_value}%`;
+    }
+  }
+
+  const shippingCost = (subtotal > 150 || appliedPurchaseCode) ? 0 : 15;
+  const taxableAmount = Math.max(0, subtotal - discount);
+  const tax = taxableAmount * 0.15; // 15% VAT
+  const grandTotal = Math.max(0, taxableAmount + (appliedPurchaseCode ? 0 : shippingCost) + (appliedPurchaseCode ? 0 : tax));
 
   // Checkout process completion
   const handlePlaceOrder = () => {
@@ -227,7 +308,7 @@ export default function StoreFront({
       price: item.product.price
     }));
 
-    // Trigger simulation on database side (updating the state of local DB arrays)
+    // Trigger simulation on database side
     onSimulateOrderCreation({
       customerName: `${firstName} ${lastName}`,
       phone,
@@ -238,12 +319,17 @@ export default function StoreFront({
       total: subtotal,
       discount,
       net: grandTotal,
-      coupon_code: appliedCoupon?.coupon_code,
+      coupon_code: appliedPurchaseCode?.code || appliedCoupon?.coupon_code,
       payment_method: paymentMethod,
       shipping_method: shippingMethod
     });
 
-    // Update local products stock state to reflect inventory depletion
+    // If 100% purchase code was used, consume it and generate next code automatically
+    if (appliedPurchaseCode) {
+      onConsumePurchaseCode(appliedPurchaseCode.code);
+    }
+
+    // Update local products stock state
     const updatedProducts = products.map(p => {
       const cartItemsForProduct = cart.filter(item => item.product.id === p.id);
       if (cartItemsForProduct.length > 0) {
@@ -261,20 +347,97 @@ export default function StoreFront({
       address: `${addressLine}, ${city}, ${stateName}, ${country}`,
       subtotal,
       discount,
-      tax,
-      shippingCost,
+      tax: appliedPurchaseCode ? 0 : tax,
+      shippingCost: appliedPurchaseCode ? 0 : shippingCost,
       grandTotal,
       paymentMethod,
       shippingMethod,
-      items: [...cart]
+      items: [...cart],
+      usedPurchaseCode: appliedPurchaseCode?.code
     });
 
     // Clear cart & state
     setCart([]);
     setAppliedCoupon(null);
+    setAppliedPurchaseCode(null);
     setCouponCode("");
     setCheckoutStep("success");
     onAddActivity("PLACE_ORDER", `نجاح عملية الشراء وتوليد الطلب رقم ${orderNumber} وتخزينه في جدول orders.`);
+  };
+
+  // Admin Product Actions (Edit, Archive, Delete)
+  const handleOpenEditProduct = (prod: Product) => {
+    setEditName(prod.product_name);
+    setEditCategoryId(prod.category_id);
+    setEditPrice(prod.price.toString());
+    setEditComparePrice(prod.compare_at_price ? prod.compare_at_price.toString() : "");
+    setEditDiscount(prod.discount_percentage ? prod.discount_percentage.toString() : "");
+    setEditStock(prod.stock.toString());
+    setEditSku(prod.sku);
+    setEditImageUrl(prod.image_url);
+    setEditDescription(prod.description);
+    setEditSpecifications(prod.specifications || "");
+    setEditColors(prod.colors.join("، "));
+    setEditSizes(prod.sizes.join("، "));
+    setIsEditingProduct(true);
+  };
+
+  const handleSaveEditedProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProduct) return;
+
+    const priceNum = parseFloat(editPrice) || selectedProduct.price;
+    const stockNum = parseInt(editStock) || selectedProduct.stock;
+    const discountVal = editDiscount ? parseFloat(editDiscount) : undefined;
+    let compareNum: number | null = editComparePrice ? parseFloat(editComparePrice) : null;
+    if (!compareNum && discountVal && discountVal > 0) {
+      compareNum = Math.round(priceNum / (1 - discountVal / 100));
+    }
+
+    const cat = SAMPLE_CATEGORIES.find(c => c.id === editCategoryId) || SAMPLE_CATEGORIES[0];
+    const colorsArr = editColors.split(/[،,]+/).map(s => s.trim()).filter(Boolean);
+    const sizesArr = editSizes.split(/[،,]+/).map(s => s.trim()).filter(Boolean);
+
+    const updated: Product = {
+      ...selectedProduct,
+      product_name: editName.trim() || selectedProduct.product_name,
+      category_id: cat.id,
+      category_name: cat.category_name,
+      price: priceNum,
+      compare_at_price: compareNum,
+      discount_percentage: discountVal,
+      stock: stockNum,
+      sku: editSku.trim() || selectedProduct.sku,
+      image_url: editImageUrl.trim() || selectedProduct.image_url,
+      images: [editImageUrl.trim() || selectedProduct.image_url, ...selectedProduct.images.slice(1)],
+      description: editDescription.trim() || selectedProduct.description,
+      specifications: editSpecifications.trim() || selectedProduct.specifications,
+      colors: colorsArr.length > 0 ? colorsArr : selectedProduct.colors,
+      sizes: sizesArr.length > 0 ? sizesArr : selectedProduct.sizes,
+    };
+
+    setProducts(products.map(p => p.id === updated.id ? updated : p));
+    setSelectedProduct(updated);
+    setIsEditingProduct(false);
+    setEditSuccessNotice(true);
+    setTimeout(() => setEditSuccessNotice(false), 2500);
+    onAddActivity("EDIT_PRODUCT", `تم تعديل وتحديث بيانات وصور ومواصفات المنتج "${updated.product_name}" من قبل المشرف.`);
+  };
+
+  const handleArchiveProduct = (prodId: number) => {
+    setProducts(products.map(p => p.id === prodId ? { ...p, is_archived: true } : p));
+    onAddActivity("ARCHIVE_PRODUCT", `تم أرشفة المنتج رقم ${prodId} ونقله لقائمة المنتجات المؤرشفة بالإعدادات.`);
+    setSelectedProduct(null);
+    setIsEditingProduct(false);
+  };
+
+  const handleDeleteProduct = (prodId: number) => {
+    if (confirm("هل أنت متأكد من رغبتك في حذف هذا المنتج نهائياً من المتجر؟")) {
+      setProducts(products.filter(p => p.id !== prodId));
+      onAddActivity("DELETE_PRODUCT", `تم حذف المنتج رقم ${prodId} نهائياً.`);
+      setSelectedProduct(null);
+      setIsEditingProduct(false);
+    }
   };
 
   // Custom user and admin reviews handler
@@ -325,7 +488,7 @@ export default function StoreFront({
     onAddActivity("ADD_REVIEW", `قام ${author} بكتابة مراجعة جديدة (${reviewRating} نجوم) للمنتج رقم ${prodId}.`);
   };
 
-  // Add new product handler
+  // Add new product handler with discount percentage
   const handleSaveNewProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProdName.trim() || !newProdPrice) {
@@ -336,7 +499,14 @@ export default function StoreFront({
     const targetCategory = SAMPLE_CATEGORIES.find(c => c.id === Number(newProdCategoryId)) || SAMPLE_CATEGORIES[0];
     const newId = products.length > 0 ? Math.max(...products.map(p => p.id)) + 1 : 1;
     const priceNum = parseFloat(newProdPrice) || 0;
-    const compareNum = newProdComparePrice ? parseFloat(newProdComparePrice) : null;
+    const discountVal = newProdDiscount ? parseFloat(newProdDiscount) : undefined;
+    let compareNum = newProdComparePrice ? parseFloat(newProdComparePrice) : null;
+    
+    // Auto-calculate compare price from discount percentage if not provided
+    if (!compareNum && discountVal && discountVal > 0 && discountVal < 100) {
+      compareNum = Math.round(priceNum / (1 - discountVal / 100));
+    }
+
     const stockNum = parseInt(newProdStock) || 10;
     const colorsArr = newProdColors.split(/[,،]+/).map(s => s.trim()).filter(Boolean);
     const sizesArr = newProdSizes.split(/[,،]+/).map(s => s.trim()).filter(Boolean);
@@ -350,10 +520,13 @@ export default function StoreFront({
       specifications: newProdSpecifications.trim() || "خامات إيطالية فاخرة - حياكة متقنة - تصميم عصري متميز وأنيق.",
       price: priceNum,
       compare_at_price: compareNum,
+      discount_percentage: discountVal,
       category_id: targetCategory.id,
       category_name: targetCategory.category_name,
       sku: newProdSku.trim() || `PRD-NEW-${newId.toString().padStart(2, "0")}`,
       is_active: true,
+      is_archived: false,
+      is_featured_marquee: true,
       image_url: defaultImg,
       images: [defaultImg],
       sizes: sizesArr.length > 0 ? sizesArr : ["S", "M", "L", "XL"],
@@ -371,6 +544,7 @@ export default function StoreFront({
     setNewProdName("");
     setNewProdPrice("");
     setNewProdComparePrice("");
+    setNewProdDiscount("");
     setNewProdDescription("");
     setNewProdSpecifications("");
     setNewProdImageUrl("");
@@ -447,7 +621,72 @@ export default function StoreFront({
       </div>
 
       {/* 2. Products Catalog Area */}
-      <div className="max-w-7xl mx-auto px-6 py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        
+        {/* Featured Products Slow Marquee Ticker */}
+        {marqueeProducts.length > 0 && (
+          <div className="mb-6 sm:mb-8 bg-slate-950 border border-amber-500/30 rounded-3xl p-3.5 sm:p-4 shadow-xl overflow-hidden group">
+            <div className="flex items-center justify-between mb-2.5 px-2">
+              <span className="flex items-center gap-2 text-xs font-bold text-amber-400">
+                <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                شريط المنتجات المختارة والعروض الحصرية:
+              </span>
+              <span className="text-[10px] sm:text-[11px] text-slate-400">
+                (يتحرك ببطء • يقف عند المرور • اضغط للدخول على المنتج)
+              </span>
+            </div>
+
+            <div className="relative w-full overflow-hidden select-none py-1">
+              <div className="animate-marquee gap-4 flex w-max">
+                {[...marqueeProducts, ...marqueeProducts].map((item, idx) => {
+                  const hasDiscount = item.discount_percentage || (item.compare_at_price && item.compare_at_price > item.price);
+                  const discountVal = item.discount_percentage || (item.compare_at_price ? Math.round(((item.compare_at_price - item.price) / item.compare_at_price) * 100) : 0);
+
+                  return (
+                    <div
+                      key={`marquee-${item.id}-${idx}`}
+                      onClick={() => {
+                        setSelectedProduct(item);
+                        setActiveImageIdx(0);
+                        onAddActivity("VIEW_MARQUEE_PRODUCT", `الدخول المباشر على المنتج المختارة "${item.product_name}" من الشريط المتحرك.`);
+                      }}
+                      className="flex items-center gap-3 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/60 p-2.5 rounded-2xl cursor-pointer transition-all shadow-md shrink-0 min-w-[230px] sm:min-w-[260px] max-w-[280px]"
+                    >
+                      <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl overflow-hidden shrink-0 bg-slate-800">
+                        <img src={item.image_url} alt={item.product_name} className="w-full h-full object-cover" />
+                        {hasDiscount ? (
+                          <span className="absolute top-0 left-0 bg-red-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-br-md">
+                            %{discountVal}-
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="flex-1 text-right overflow-hidden">
+                        <h4 className="text-xs font-bold text-white truncate max-w-[150px] sm:max-w-[170px]">
+                          {item.product_name}
+                        </h4>
+                        <span className="text-[10px] text-slate-400 block truncate">
+                          {item.category_name}
+                        </span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs font-black text-amber-400">
+                            ${item.price.toFixed(2)}
+                          </span>
+                          {item.compare_at_price && (
+                            <span className="text-[10px] text-slate-500 line-through">
+                              ${item.compare_at_price.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8 pb-6 border-b border-slate-200">
           {/* Categories Tab */}
           <div className="flex flex-wrap gap-2">
@@ -525,6 +764,8 @@ export default function StoreFront({
           {filteredProducts.map(product => {
             const isLowStock = product.stock <= 3;
             const isOutOfStock = product.stock === 0;
+            const hasDiscount = product.discount_percentage || (product.compare_at_price && product.compare_at_price > product.price);
+            const discountPercent = product.discount_percentage || (product.compare_at_price ? Math.round(((product.compare_at_price - product.price) / product.compare_at_price) * 100) : 0);
 
             return (
               <motion.div
@@ -549,9 +790,16 @@ export default function StoreFront({
                   />
                   
                   {/* Category tag */}
-                  <span className="absolute top-4 right-4 bg-slate-900/80 text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg backdrop-blur-sm">
+                  <span className="absolute top-4 right-4 bg-slate-900/80 text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg backdrop-blur-sm z-10">
                     {product.category_name}
                   </span>
+
+                  {/* Red Discount Ribbon on top-left aligned horizontally with category */}
+                  {hasDiscount ? (
+                    <span className="absolute top-4 left-4 z-10 bg-red-600 text-white text-xs font-black px-2.5 py-1 rounded-lg shadow-lg flex items-center gap-1">
+                      <span>خصم {discountPercent}%-</span>
+                    </span>
+                  ) : null}
 
                   {/* Stock label */}
                   {isOutOfStock ? (
@@ -643,68 +891,286 @@ export default function StoreFront({
               exit={{ scale: 0.95, opacity: 0 }}
               className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl relative"
             >
+              {/* Close Button */}
               <button 
-                onClick={() => setSelectedProduct(null)}
-                className="absolute top-6 left-6 p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-950 transition-all z-10"
+                onClick={() => {
+                  setSelectedProduct(null);
+                  setIsEditingProduct(false);
+                }}
+                className="absolute top-4 left-4 p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-950 transition-all z-20"
               >
                 <X className="w-5 h-5" />
               </button>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6 md:p-8">
-                {/* Images Gallery */}
-                <div className="space-y-4">
-                  <div className="h-96 w-full rounded-2xl overflow-hidden bg-slate-100">
-                    <img 
-                      src={selectedProduct.images[activeImageIdx] || selectedProduct.image_url} 
-                      alt={selectedProduct.product_name}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
+              {/* Admin Top Actions Bar if logged in with 0000 */}
+              {isAdmin && (
+                <div className="bg-slate-950 border-b border-amber-500/30 px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold">
+                    <ShieldCheck className="w-4 h-4 text-amber-400" />
+                    <span>لوحة تحكم المشرف (Admin Mode):</span>
                   </div>
-                  <div className="flex gap-3 overflow-x-auto pb-1">
-                    {selectedProduct.images.map((img, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setActiveImageIdx(idx)}
-                        className={`h-20 w-20 rounded-xl overflow-hidden border-2 bg-slate-50 flex-shrink-0 transition-all ${
-                          activeImageIdx === idx ? "border-amber-500 shadow-md" : "border-transparent opacity-70 hover:opacity-100"
-                        }`}
-                      >
-                        <img src={img} alt="thumbnail" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditProduct(selectedProduct)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all shadow-sm ${
+                        isEditingProduct 
+                          ? "bg-amber-400 text-slate-950" 
+                          : "bg-amber-500 hover:bg-amber-600 text-slate-950"
+                      }`}
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      {isEditingProduct ? "إلغاء التعديل" : "تعديل المنتج"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleArchiveProduct(selectedProduct.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-700 transition-all font-semibold"
+                      title="إخفاء المنتج من واجهة المتجر ونقله للأرشيف"
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                      أرشفة
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteProduct(selectedProduct.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 transition-all font-semibold"
+                      title="حذف المنتج نهائياً من المتجر"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      حذف
+                    </button>
                   </div>
                 </div>
+              )}
 
-                {/* Product Meta & Actions */}
-                <div className="space-y-6 text-right">
-                  <div>
-                    <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2.5 py-1 rounded-md">SKU: {selectedProduct.sku}</span>
-                    <h2 className="text-2xl md:text-3xl font-extrabold text-slate-950 mt-2">{selectedProduct.product_name}</h2>
-                    <p className="text-amber-600 text-sm font-semibold mt-1">{selectedProduct.category_name}</p>
+              {/* Edit Product Form View for Admin */}
+              {isEditingProduct ? (
+                <form onSubmit={handleSaveEditedProduct} className="p-6 md:p-8 space-y-4 text-right">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                      <Edit2 className="w-4 h-4 text-amber-500" />
+                      تعديل بيانات وتفاصيل وصور المنتج
+                    </h3>
+                    <span className="text-xs text-slate-400 font-mono">SKU: {selectedProduct.sku}</span>
                   </div>
 
-                  {/* Reviews rating */}
-                  <div className="flex items-center gap-2">
-                    <div className="flex text-amber-500">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star 
-                          key={star} 
-                          className={`w-4 h-4 ${star <= Math.round(selectedProduct.rating) ? "fill-current" : "opacity-30"}`} 
-                        />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">اسم المنتج: *</label>
+                      <input
+                        type="text"
+                        required
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">القسم / التصنيف: *</label>
+                      <select
+                        value={editCategoryId}
+                        onChange={(e) => setEditCategoryId(Number(e.target.value))}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      >
+                        {SAMPLE_CATEGORIES.map(c => (
+                          <option key={c.id} value={c.id}>{c.category_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">السعر ($): *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        value={editPrice}
+                        onChange={(e) => setEditPrice(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">قبل الخصم ($):</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editComparePrice}
+                        onChange={(e) => setEditComparePrice(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-red-600">نسبة الخصم (%):</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="99"
+                        value={editDiscount}
+                        onChange={(e) => setEditDiscount(e.target.value)}
+                        placeholder="20"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-red-200 bg-red-50/30 text-xs font-bold focus:ring-2 focus:ring-red-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">المخزون: *</label>
+                      <input
+                        type="number"
+                        required
+                        value={editStock}
+                        onChange={(e) => setEditStock(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">رمز المنتج (SKU):</label>
+                      <input
+                        type="text"
+                        value={editSku}
+                        onChange={(e) => setEditSku(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">رابط صورة المنتج (URL):</label>
+                      <input
+                        type="url"
+                        value={editImageUrl}
+                        onChange={(e) => setEditImageUrl(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-700">تفاصيل ووصف المنتج:</label>
+                    <textarea
+                      rows={2}
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none leading-relaxed"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-700">مواصفات وخامة التصنيع:</label>
+                    <textarea
+                      rows={2}
+                      value={editSpecifications}
+                      onChange={(e) => setEditSpecifications(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none leading-relaxed"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">الألوان (مفصولة بفاصلة):</label>
+                      <input
+                        type="text"
+                        value={editColors}
+                        onChange={(e) => setEditColors(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">المقاسات (مفصولة بفاصلة):</label>
+                      <input
+                        type="text"
+                        value={editSizes}
+                        onChange={(e) => setEditSizes(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingProduct(false)}
+                      className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-100"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold shadow-md transition-all flex items-center justify-center gap-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      حفظ وتحديث بيانات المنتج
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6 md:p-8">
+                  {/* Images Gallery */}
+                  <div className="space-y-4">
+                    <div className="h-96 w-full rounded-2xl overflow-hidden bg-slate-100 relative">
+                      <img 
+                        src={selectedProduct.images[activeImageIdx] || selectedProduct.image_url} 
+                        alt={selectedProduct.product_name}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                      {(selectedProduct.discount_percentage || (selectedProduct.compare_at_price && selectedProduct.compare_at_price > selectedProduct.price)) && (
+                        <span className="absolute top-4 left-4 bg-red-600 text-white text-xs font-black px-3 py-1 rounded-lg shadow-lg">
+                          خصم {selectedProduct.discount_percentage || Math.round(((selectedProduct.compare_at_price! - selectedProduct.price) / selectedProduct.compare_at_price!) * 100)}%-
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-3 overflow-x-auto pb-1">
+                      {selectedProduct.images.map((img, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setActiveImageIdx(idx)}
+                          className={`h-20 w-20 rounded-xl overflow-hidden border-2 bg-slate-50 flex-shrink-0 transition-all ${
+                            activeImageIdx === idx ? "border-amber-500 shadow-md" : "border-transparent opacity-70 hover:opacity-100"
+                          }`}
+                        >
+                          <img src={img} alt="thumbnail" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        </button>
                       ))}
                     </div>
-                    <span className="text-sm font-bold text-slate-700">{selectedProduct.rating} من 5 نجوم</span>
-                    <span className="text-slate-400 text-xs">({selectedProduct.reviews_count} تقييم مسجل)</span>
                   </div>
 
-                  {/* Price */}
-                  <div className="flex items-baseline gap-3 border-y border-slate-100 py-4">
-                    <span className="text-3xl font-black text-slate-950">${selectedProduct.price.toFixed(2)}</span>
-                    {selectedProduct.compare_at_price && (
-                      <span className="text-sm text-slate-400 line-through">${selectedProduct.compare_at_price.toFixed(2)}</span>
-                    )}
-                  </div>
+                  {/* Product Meta & Actions */}
+                  <div className="space-y-6 text-right">
+                    <div>
+                      <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2.5 py-1 rounded-md">SKU: {selectedProduct.sku}</span>
+                      <h2 className="text-2xl md:text-3xl font-extrabold text-slate-950 mt-2">{selectedProduct.product_name}</h2>
+                      <p className="text-amber-600 text-sm font-semibold mt-1">{selectedProduct.category_name}</p>
+                    </div>
+
+                    {/* Reviews rating */}
+                    <div className="flex items-center gap-2">
+                      <div className="flex text-amber-500">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star 
+                            key={star} 
+                            className={`w-4 h-4 ${star <= Math.round(selectedProduct.rating) ? "fill-current" : "opacity-30"}`} 
+                          />
+                        ))}
+                      </div>
+                      <span className="text-sm font-bold text-slate-700">{selectedProduct.rating} من 5 نجوم</span>
+                      <span className="text-slate-400 text-xs">({selectedProduct.reviews_count} تقييم مسجل)</span>
+                    </div>
+
+                    {/* Price */}
+                    <div className="flex items-baseline gap-3 border-y border-slate-100 py-4 flex-wrap">
+                      <span className="text-3xl font-black text-slate-950">${selectedProduct.price.toFixed(2)}</span>
+                      {selectedProduct.compare_at_price && (
+                        <span className="text-sm text-slate-400 line-through">${selectedProduct.compare_at_price.toFixed(2)}</span>
+                      )}
+                      {(selectedProduct.discount_percentage || (selectedProduct.compare_at_price && selectedProduct.compare_at_price > selectedProduct.price)) && (
+                        <span className="bg-red-600 text-white text-xs font-black px-2.5 py-1 rounded-lg">
+                          خصم {selectedProduct.discount_percentage || Math.round(((selectedProduct.compare_at_price! - selectedProduct.price) / selectedProduct.compare_at_price!) * 100)}%-
+                        </span>
+                      )}
+                    </div>
 
                   <p className="text-slate-600 text-sm leading-relaxed">{selectedProduct.description}</p>
 
@@ -899,10 +1365,11 @@ export default function StoreFront({
                   </div>
                 </div>
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+            )}
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
 
       {/* 4. Sliding Shopping Cart Drawer */}
       <AnimatePresence>
@@ -1010,6 +1477,20 @@ export default function StoreFront({
                       </button>
                     </div>
                     {couponError && <p className="text-[10px] text-red-500 font-semibold">{couponError}</p>}
+                    {appliedPurchaseCode && (
+                      <div className="flex items-center justify-between bg-amber-500/20 text-amber-900 px-3 py-1.5 rounded-lg border border-amber-500/40 text-xs">
+                        <span className="flex items-center gap-1 font-bold">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                          تم تفعيل كود الشراء المجاني 100% ({appliedPurchaseCode.code})
+                        </span>
+                        <button 
+                          onClick={() => setAppliedPurchaseCode(null)}
+                          className="text-amber-900 font-extrabold hover:underline text-[10px]"
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                    )}
                     {appliedCoupon && (
                       <div className="flex items-center justify-between bg-emerald-50 text-emerald-800 px-3 py-1.5 rounded-lg border border-emerald-200 text-xs">
                         <span className="flex items-center gap-1 font-bold">
@@ -1034,7 +1515,14 @@ export default function StoreFront({
                     </div>
                     {discount > 0 && (
                       <div className="flex justify-between text-emerald-700">
-                        <span>الخصم المطبق:</span>
+                        <span className="flex items-center gap-1">
+                          <span>الخصم المطبق:</span>
+                          {discountNotice && (
+                            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">
+                              {discountNotice}
+                            </span>
+                          )}
+                        </span>
                         <span className="font-bold">-${discount.toFixed(2)}</span>
                       </div>
                     )}
@@ -1429,7 +1917,7 @@ export default function StoreFront({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                   {/* Price */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-700">
@@ -1458,6 +1946,22 @@ export default function StoreFront({
                       onChange={(e) => setNewProdComparePrice(e.target.value)}
                       placeholder="240.00"
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Discount percentage */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-red-600">
+                      نسبة الخصم (%):
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="99"
+                      value={newProdDiscount}
+                      onChange={(e) => setNewProdDiscount(e.target.value)}
+                      placeholder="20"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-red-200 bg-red-50/40 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-red-500 focus:outline-none"
                     />
                   </div>
 
@@ -1621,6 +2125,34 @@ export default function StoreFront({
               </form>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+      {/* Toast Notification when adding product to cart */}
+      <AnimatePresence>
+        {cartToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 40, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-950/95 text-white border border-amber-500/50 shadow-2xl rounded-2xl px-5 py-3.5 flex items-center gap-3 backdrop-blur-md max-w-md w-auto"
+          >
+            <div className="h-8 w-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold shrink-0">
+              <Check className="w-5 h-5 stroke-[3]" />
+            </div>
+            <div className="text-right">
+              <p className="text-xs font-bold text-white">تمت إضافة المنتج إلى حقيبة التسوق بنجاح!</p>
+              <p className="text-[11px] text-amber-400 font-medium truncate max-w-[200px]">{cartToast.name}</p>
+            </div>
+            <button
+              onClick={() => {
+                setCartToast(null);
+                setIsCartOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition-all mr-2 whitespace-nowrap cursor-pointer"
+            >
+              عرض السلة
+            </button>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

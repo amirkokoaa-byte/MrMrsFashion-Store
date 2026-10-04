@@ -13,10 +13,13 @@ export interface Product {
   specifications?: string;
   price: number;
   compare_at_price: number | null;
+  discount_percentage?: number;
   category_id: number;
   category_name: string;
   sku: string;
   is_active: boolean;
+  is_archived?: boolean;
+  is_featured_marquee?: boolean;
   image_url: string;
   images: string[];
   sizes: string[];
@@ -59,8 +62,16 @@ export interface Coupon {
   coupon_code: string;
   discount_type: "percentage" | "fixed";
   discount_value: number;
+  max_discount_amount?: number;
   min_order_amount: number;
   is_active: boolean;
+}
+
+export interface PurchaseCode {
+  id: number;
+  code: string;
+  is_used: boolean;
+  created_at: string;
 }
 
 export interface ActivityLog {

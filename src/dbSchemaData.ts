@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { DbTableSchema, Product, Category, Coupon, Review } from "./types";
+import { DbTableSchema, Product, Category, Coupon, Review, PurchaseCode } from "./types";
 
 // 1. Interactive e-commerce products
 export const SAMPLE_CATEGORIES: Category[] = [
@@ -151,54 +151,14 @@ export const SAMPLE_PRODUCTS: Product[] = [
   }
 ];
 
-export const INITIAL_PRODUCT_REVIEWS: Review[] = [
+export const INITIAL_PRODUCT_REVIEWS: Review[] = [];
+
+export const INITIAL_PURCHASE_CODES: PurchaseCode[] = [
   {
     id: 1,
-    customer_id: 1,
-    user_name: "أحمد علي",
-    is_admin: false,
-    product_id: 4,
-    rating: 5,
-    comment: "القميص مريح جداً وملمسه رائع على الجسم، والقياس مضبوط تماماً. شكراً كامل أبو سمرة!",
-    created_at: "2026-07-03 11:15"
-  },
-  {
-    id: 2,
-    customer_id: 2,
-    user_name: "سارة عمر",
-    is_admin: false,
-    product_id: 2,
-    rating: 5,
-    comment: "فستان رائع جداً وتطريزه غاية في الدقة والجمال، يستحق كل قرش، والشحن سريع جداً.",
-    created_at: "2026-07-03 11:20"
-  },
-  {
-    id: 3,
-    customer_id: 1,
-    user_name: "أحمد علي",
-    is_admin: false,
-    product_id: 1,
-    rating: 5,
-    comment: "بدلة فخمة جداً، القماش إيطالي ممتاز والقصة ممتازة لحضور المؤتمرات الرسمية.",
-    created_at: "2026-07-03 12:40"
-  },
-  {
-    id: 4,
-    user_name: "كامل أبو سمرة (إدارة البوتيك)",
-    is_admin: true,
-    product_id: 1,
-    rating: 5,
-    comment: "نشكركم على ثقتكم الغالية، تم فحص ومعايرة جودة حياكة هذه البدلة وفق أعلى المعايير الإيطالية.",
-    created_at: "2026-07-03 13:00"
-  },
-  {
-    id: 5,
-    user_name: "كامل أبو سمرة (إدارة البوتيك)",
-    is_admin: true,
-    product_id: 3,
-    rating: 5,
-    comment: "الجلد الطبيعي المستخدم في هذه الحقيبة تم استيراده مباشرة من مدابغ توسكانا الإيطالية المعتمدة.",
-    created_at: "2026-07-03 13:10"
+    code: "VIP100-BUY",
+    is_used: false,
+    created_at: "2026-10-04 14:00"
   }
 ];
 
@@ -208,6 +168,7 @@ export const SAMPLE_COUPONS: Coupon[] = [
     coupon_code: "KAMEL10",
     discount_type: "percentage",
     discount_value: 10,
+    max_discount_amount: 200,
     min_order_amount: 50,
     is_active: true
   },
@@ -216,6 +177,7 @@ export const SAMPLE_COUPONS: Coupon[] = [
     coupon_code: "SAMRA50",
     discount_type: "fixed",
     discount_value: 50,
+    max_discount_amount: 200,
     min_order_amount: 250,
     is_active: true
   },
@@ -224,6 +186,7 @@ export const SAMPLE_COUPONS: Coupon[] = [
     coupon_code: "FASHION20",
     discount_type: "percentage",
     discount_value: 20,
+    max_discount_amount: 200,
     min_order_amount: 100,
     is_active: true
   }

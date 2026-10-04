@@ -21,12 +21,23 @@ import {
   Lock,
   Plus,
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  Tag,
+  Snowflake,
+  Archive,
+  RefreshCw,
+  Trash2,
+  Edit2,
+  Sliders,
+  CheckCircle2,
+  Percent
 } from "lucide-react";
 import StoreFront from "./components/StoreFront";
 import DbDesigner from "./components/DbDesigner";
+import WinterSnowEffect from "./components/WinterSnowEffect";
 import { MockSqlEngine } from "./sqlEngine";
-import { ActivityLog } from "./types";
+import { ActivityLog, Product, Coupon, PurchaseCode } from "./types";
+import { SAMPLE_PRODUCTS, SAMPLE_COUPONS, INITIAL_PURCHASE_CODES } from "./dbSchemaData";
 
 export default function App() {
   const [activeView, setActiveView] = useState<"storefront" | "designer">("storefront");
@@ -39,12 +50,31 @@ export default function App() {
     heroSubtitle: "تصاميم إيطالية فاخرة منتقاة بعناية للبدلات الرسمية والفساتين الكلاسيكية والإكسسوارات المتميزة، صُممت لتمنحك إطلالة فريدة تعبر عن هويتك الراقية."
   });
 
+  // Winter Star-Snow effect toggle
+  const [isWinterSnowEnabled, setIsWinterSnowEnabled] = useState(true);
+
+  // Products Database state
+  const [products, setProducts] = useState<Product[]>(SAMPLE_PRODUCTS.map(p => ({
+    ...p,
+    discount_percentage: p.compare_at_price ? Math.round(((p.compare_at_price - p.price) / p.compare_at_price) * 100) : undefined,
+    is_featured_marquee: true,
+    is_archived: false,
+    reviews_count: 0
+  })));
+
+  // Coupons state
+  const [coupons, setCoupons] = useState<Coupon[]>(SAMPLE_COUPONS);
+
+  // Single-use 100% Purchase Codes state
+  const [purchaseCodes, setPurchaseCodes] = useState<PurchaseCode[]>(INITIAL_PURCHASE_CODES);
+
   // Settings & Authentication States
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isSettingsUnlocked, setIsSettingsUnlocked] = useState(false);
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [authError, setAuthError] = useState("");
+  const [settingsTab, setSettingsTab] = useState<"site" | "coupons" | "marquee_winter" | "archived" | "database">("site");
 
   // Temp form states for settings editing
   const [tempSiteName, setTempSiteName] = useState(siteConfig.siteName);
@@ -52,6 +82,16 @@ export default function App() {
   const [tempHeroTitle, setTempHeroTitle] = useState(siteConfig.heroTitle);
   const [tempHeroSubtitle, setTempHeroSubtitle] = useState(siteConfig.heroSubtitle);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
+
+  // Coupon Creation form states
+  const [newCouponCode, setNewCouponCode] = useState("");
+  const [newCouponDiscount, setNewCouponDiscount] = useState<string>("20");
+  const [newCouponMaxLimit, setNewCouponMaxLimit] = useState<string>("200");
+  const [newCouponMinOrder, setNewCouponMinOrder] = useState<string>("50");
+  const [editingCouponId, setEditingCouponId] = useState<number | null>(null);
+
+  // Purchase Code setting state
+  const [customPurchaseCodeName, setCustomPurchaseCodeName] = useState("");
 
   // Trigger for Add Product Modal
   const [isAddProductTriggered, setIsAddProductTriggered] = useState(false);
@@ -128,6 +168,98 @@ export default function App() {
     setSaveSuccessNotice(true);
     setTimeout(() => setSaveSuccessNotice(false), 2500);
     handleAddActivity("UPDATE_SITE_CONFIG", "تم تحديث نصوص وهوية الموقع واسم البوتيك من لوحة الإعدادات.");
+  };
+
+  // Coupon handlers
+  const handleSaveCoupon = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCouponCode.trim() || !newCouponDiscount) return;
+
+    const val = parseFloat(newCouponDiscount) || 10;
+    const maxVal = newCouponMaxLimit ? parseFloat(newCouponMaxLimit) : undefined;
+    const minVal = parseFloat(newCouponMinOrder) || 0;
+
+    if (editingCouponId) {
+      setCoupons(coupons.map(c => c.id === editingCouponId ? {
+        ...c,
+        coupon_code: newCouponCode.trim().toUpperCase(),
+        discount_value: val,
+        max_discount_amount: maxVal,
+        min_order_amount: minVal
+      } : c));
+      setEditingCouponId(null);
+      handleAddActivity("UPDATE_COUPON", `تم تحديث بيانات كوبون الخصم ${newCouponCode.toUpperCase()}.`);
+    } else {
+      const newC: Coupon = {
+        id: Date.now(),
+        coupon_code: newCouponCode.trim().toUpperCase(),
+        discount_type: "percentage",
+        discount_value: val,
+        max_discount_amount: maxVal,
+        min_order_amount: minVal,
+        is_active: true
+      };
+      setCoupons([newC, ...coupons]);
+      handleAddActivity("ADD_COUPON", `تمت إضافة كوبون خصم جديد ${newC.coupon_code} بنسبة ${val}% وحد أقصى ${maxVal || "غير محدد"}.`);
+    }
+
+    setNewCouponCode("");
+    setNewCouponDiscount("20");
+    setNewCouponMaxLimit("200");
+  };
+
+  const handleToggleCoupon = (id: number) => {
+    setCoupons(coupons.map(c => c.id === id ? { ...c, is_active: !c.is_active } : c));
+  };
+
+  const handleDeleteCoupon = (id: number) => {
+    setCoupons(coupons.filter(c => c.id !== id));
+    handleAddActivity("DELETE_COUPON", `تم حذف كوبون الخصم رقم ${id}.`);
+  };
+
+  // Add/Update 100% Purchase code
+  const handleSetPurchaseCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customPurchaseCodeName.trim()) return;
+
+    const newCodeItem: PurchaseCode = {
+      id: Date.now(),
+      code: customPurchaseCodeName.trim().toUpperCase(),
+      is_used: false,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 16)
+    };
+    setPurchaseCodes([newCodeItem, ...purchaseCodes]);
+    setCustomPurchaseCodeName("");
+    handleAddActivity("NEW_PURCHASE_CODE", `تم إصدار كود شراء جديد بنسبة خصم 100%: ${newCodeItem.code}.`);
+  };
+
+  // When purchase code is consumed in StoreFront checkout
+  const handleConsumePurchaseCode = (codeStr: string) => {
+    // 1. Mark current as used
+    const updated = purchaseCodes.map(pc => 
+      pc.code.toUpperCase() === codeStr.toUpperCase() ? { ...pc, is_used: true } : pc
+    );
+    // 2. Automatically generate a new purchase code for next VIP customer
+    const autoNextCode = `VIP100-${Math.floor(1000 + Math.random() * 9000)}`;
+    const nextItem: PurchaseCode = {
+      id: Date.now(),
+      code: autoNextCode,
+      is_used: false,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 16)
+    };
+    setPurchaseCodes([nextItem, ...updated]);
+    handleAddActivity("CONSUME_PURCHASE_CODE", `تم استخدام كود الشراء ${codeStr} بنجاح، وتوليد كود شراء جديد لحظياً: ${autoNextCode}.`);
+  };
+
+  // Restore archived product
+  const handleRestoreProduct = (id: number) => {
+    setProducts(products.map(p => p.id === id ? { ...p, is_archived: false } : p));
+    handleAddActivity("RESTORE_PRODUCT", `تمت استعادة المنتج رقم ${id} من الأرشيف وإعادته لواجهة المتجر.`);
+  };
+
+  // Toggle product in marquee
+  const handleToggleMarqueeProduct = (id: number) => {
+    setProducts(products.map(p => p.id === id ? { ...p, is_featured_marquee: !p.is_featured_marquee } : p));
   };
 
   // Simulate order creation on database side
@@ -294,6 +426,22 @@ export default function App() {
               </span>
             </button>
 
+            {/* Quick Winter Snow Stars Toggle */}
+            <button
+              onClick={() => {
+                setIsWinterSnowEnabled(!isWinterSnowEnabled);
+                handleAddActivity("TOGGLE_WINTER", `تم ${!isWinterSnowEnabled ? "تشغيل" : "إيقاف"} ثلج النجوم الشتوي.`);
+              }}
+              className={`p-2 rounded-xl border transition-all ${
+                isWinterSnowEnabled 
+                  ? "bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-sm" 
+                  : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700"
+              }`}
+              title={isWinterSnowEnabled ? "إيقاف ثلج النجوم الشتوي" : "تشغيل ثلج النجوم الشتوي"}
+            >
+              <Snowflake className={`w-4 h-4 ${isWinterSnowEnabled ? "animate-spin" : ""}`} />
+            </button>
+
             {/* Gear Button (Settings with masked password '0000') */}
             <button
               onClick={handleOpenSettings}
@@ -310,6 +458,9 @@ export default function App() {
         </div>
       </div>
 
+      {/* Winter Snow Stars Effect */}
+      {isWinterSnowEnabled && <WinterSnowEffect />}
+
       {/* Main Content Render */}
       <div className="flex-1">
         <AnimatePresence mode="wait">
@@ -324,6 +475,12 @@ export default function App() {
             {activeView === "storefront" ? (
               <StoreFront 
                 siteConfig={siteConfig}
+                products={products}
+                setProducts={setProducts}
+                coupons={coupons}
+                purchaseCodes={purchaseCodes}
+                onConsumePurchaseCode={handleConsumePurchaseCode}
+                isAdmin={isSettingsUnlocked}
                 onAddActivity={handleAddActivity}
                 onSimulateOrderCreation={handleSimulateOrderCreation}
                 isAddProductOpen={isAddProductTriggered}
@@ -409,7 +566,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Settings Modal (Gear Configuration) */}
+      {/* Settings Modal (Tabbed Navigation) */}
       <AnimatePresence>
         {showSettingsModal && (
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -418,10 +575,10 @@ export default function App() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="relative bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-xl w-full shadow-2xl text-right z-10 space-y-6 max-h-[90vh] overflow-y-auto"
+              className="relative bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 max-w-2xl w-full shadow-2xl text-right z-10 space-y-5 max-h-[90vh] overflow-y-auto"
             >
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <button 
                   onClick={() => setShowSettingsModal(false)}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
@@ -430,8 +587,8 @@ export default function App() {
                 </button>
                 <div className="flex items-center gap-2">
                   <div>
-                    <h3 className="font-bold text-white text-base">إعدادات وهوية المتجر</h3>
-                    <p className="text-[11px] text-slate-400">تخصيص أسماء وعناوين الواجهة وفق طلبات الإدارة</p>
+                    <h3 className="font-bold text-white text-base">لوحة إعدادات وإدارة البوتيك</h3>
+                    <p className="text-[11px] text-slate-400">إدارة الهوية، الشتاء، المنتجات، وأكواد الخصم والشراء</p>
                   </div>
                   <div className="h-9 w-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
                     <Settings className="w-5 h-5" />
@@ -439,116 +596,497 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Navigation Tabs Bar */}
+              <div className="flex border-b border-slate-800 gap-1 overflow-x-auto pb-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab("site")}
+                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                    settingsTab === "site" 
+                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  هوية الموقع
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab("coupons")}
+                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                    settingsTab === "coupons" 
+                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Tag className="w-3.5 h-3.5" />
+                  أكواد الخصم والشراء
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab("marquee_winter")}
+                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                    settingsTab === "marquee_winter" 
+                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Snowflake className="w-3.5 h-3.5 text-blue-400" />
+                  موسم الشتاء والشريط
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab("archived")}
+                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                    settingsTab === "archived" 
+                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Archive className="w-3.5 h-3.5 text-amber-500" />
+                  المؤرشفة ({products.filter(p => p.is_archived).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab("database")}
+                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                    settingsTab === "database" 
+                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Database className="w-3.5 h-3.5 text-emerald-400" />
+                  MySQL
+                </button>
+              </div>
+
               {saveSuccessNotice && (
                 <div className="bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-xs p-3 rounded-xl flex items-center gap-2">
                   <Check className="w-4 h-4" />
-                  تم حفظ وتحديث نصوص وبيانات الموقع بنجاح!
+                  تم حفظ وتحديث البيانات بنجاح!
                 </div>
               )}
 
-              {/* Settings Form */}
-              <form onSubmit={handleSaveSettings} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-300">
-                    اسم الموقع والشريط العلوي:
-                  </label>
-                  <input
-                    type="text"
-                    value={tempSiteName}
-                    onChange={(e) => setTempSiteName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    placeholder="بوتيك الأناقة & MySQL Designer"
-                  />
-                </div>
+              {/* Tab 1: Site Identity & Text */}
+              {settingsTab === "site" && (
+                <form onSubmit={handleSaveSettings} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-300">
+                      اسم الموقع والشريط العلوي:
+                    </label>
+                    <input
+                      type="text"
+                      value={tempSiteName}
+                      onChange={(e) => setTempSiteName(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      placeholder="بوتيك الأناقة & MySQL Designer"
+                    />
+                  </div>
 
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-300">
-                    نص إشراف المطور والجهة الإشرافية:
-                  </label>
-                  <input
-                    type="text"
-                    value={tempDeveloperCredit}
-                    onChange={(e) => setTempDeveloperCredit(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    placeholder="بإشراف المطور: كامل أبو سمرة – kamel3lom"
-                  />
-                </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-300">
+                      نص إشراف المطور والجهة الإشرافية:
+                    </label>
+                    <input
+                      type="text"
+                      value={tempDeveloperCredit}
+                      onChange={(e) => setTempDeveloperCredit(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      placeholder="بإشراف المطور: كامل أبو سمرة – kamel3lom"
+                    />
+                  </div>
 
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-300">
-                    عنوان الواجهة الترحيبية (Hero Title):
-                  </label>
-                  <input
-                    type="text"
-                    value={tempHeroTitle}
-                    onChange={(e) => setTempHeroTitle(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    placeholder="بوتيك الأناقة العصرية"
-                  />
-                </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-300">
+                      عنوان الواجهة الترحيبية (Hero Title):
+                    </label>
+                    <input
+                      type="text"
+                      value={tempHeroTitle}
+                      onChange={(e) => setTempHeroTitle(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      placeholder="بوتيك الأناقة العصرية"
+                    />
+                  </div>
 
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-300">
-                    وصف الواجهة الترحيبية (Hero Description):
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={tempHeroSubtitle}
-                    onChange={(e) => setTempHeroSubtitle(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none leading-relaxed"
-                    placeholder="تصاميم إيطالية فاخرة منتقاة بعناية..."
-                  />
-                </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-300">
+                      وصف الواجهة الترحيبية (Hero Description):
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={tempHeroSubtitle}
+                      onChange={(e) => setTempHeroSubtitle(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none leading-relaxed"
+                      placeholder="تصاميم إيطالية فاخرة منتقاة بعناية..."
+                    />
+                  </div>
 
-                <div className="pt-2 flex gap-3">
                   <button
                     type="submit"
-                    className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md"
+                    className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md"
                   >
                     حفظ التعديلات
                   </button>
+                </form>
+              )}
+
+              {/* Tab 2: Coupons & 100% Purchase Codes */}
+              {settingsTab === "coupons" && (
+                <div className="space-y-6">
+                  {/* Single-Use 100% Purchase Code Management */}
+                  <div className="bg-slate-950/80 p-4 rounded-2xl border border-amber-500/30 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4" />
+                        كود الشراء الفوري (نسبة 100% - استخدام لمرة واحدة):
+                      </span>
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono font-bold">
+                        100% Discount
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      هذا الكود يمنح العميل خصم 100% ويُستخدم مرة واحدة فقط، ويتغير أوتوماتيكياً فور استخدامه لعملية شراء:
+                    </p>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex-1 bg-slate-900 border border-slate-700 px-3 py-2 rounded-xl text-xs font-mono font-bold text-emerald-400 flex items-center justify-between">
+                        <span>الكود النشط حالياً:</span>
+                        <span className="text-amber-400 text-sm tracking-wider">
+                          {purchaseCodes.find(pc => !pc.is_used)?.code || "لا يوجد كود نشط"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Set Custom Code */}
+                    <form onSubmit={handleSetPurchaseCode} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customPurchaseCodeName}
+                        onChange={(e) => setCustomPurchaseCodeName(e.target.value)}
+                        placeholder="اكتب كود الشراء المخصص (أرقام وحروف)..."
+                        className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-mono focus:ring-2 focus:ring-amber-500"
+                      />
+                      <button
+                        type="submit"
+                        className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl transition-all"
+                      >
+                        تحديث الكود
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Standard Coupons Management with Max Discount Limit */}
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                      <Tag className="w-4 h-4 text-amber-400" />
+                      إدارة أكواد الخصم العادية والحدود القصوى:
+                    </h4>
+
+                    {/* Add / Edit Coupon Form */}
+                    <form onSubmit={handleSaveCoupon} className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                            رمز الكود (حروف/أرقام):
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={newCouponCode}
+                            onChange={(e) => setNewCouponCode(e.target.value)}
+                            placeholder="WINTER20"
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-mono uppercase focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                            نسبة الخصم (%):
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            min="1"
+                            max="100"
+                            value={newCouponDiscount}
+                            onChange={(e) => setNewCouponDiscount(e.target.value)}
+                            placeholder="20"
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                            أقصى قيمة للخصم ($/ج):
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={newCouponMaxLimit}
+                            onChange={(e) => setNewCouponMaxLimit(e.target.value)}
+                            placeholder="200"
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                            الحد الأدنى للطلب ($/ج):
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={newCouponMinOrder}
+                            onChange={(e) => setNewCouponMinOrder(e.target.value)}
+                            placeholder="50"
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 justify-end">
+                        {editingCouponId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCouponId(null);
+                              setNewCouponCode("");
+                              setNewCouponDiscount("20");
+                              setNewCouponMaxLimit("200");
+                            }}
+                            className="px-3 py-1.5 rounded-xl border border-slate-700 text-slate-300 text-xs hover:bg-slate-800"
+                          >
+                            إلغاء التعديل
+                          </button>
+                        )}
+                        <button
+                          type="submit"
+                          className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold shadow-md"
+                        >
+                          {editingCouponId ? "حفظ تعديل الكود" : "إضافة كود الخصم"}
+                        </button>
+                      </div>
+                    </form>
+
+                    {/* Coupons List */}
+                    <div className="space-y-2">
+                      {coupons.map((c) => (
+                        <div key={c.id} className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono font-black text-amber-400 text-sm bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                              {c.coupon_code}
+                            </span>
+                            <span className="text-slate-300">
+                              خصم {c.discount_value}% {c.max_discount_amount ? `(حد أقصى ${c.max_discount_amount})` : ""}
+                            </span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${c.is_active ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"}`}>
+                              {c.is_active ? "نشط" : "معطل"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleCoupon(c.id)}
+                              className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-[11px] text-slate-300"
+                            >
+                              {c.is_active ? "إيقاف" : "تفعيل"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingCouponId(c.id);
+                                setNewCouponCode(c.coupon_code);
+                                setNewCouponDiscount(c.discount_value.toString());
+                                setNewCouponMaxLimit(c.max_discount_amount?.toString() || "");
+                                setNewCouponMinOrder(c.min_order_amount.toString());
+                              }}
+                              className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-amber-400"
+                              title="تعديل"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCoupon(c.id)}
+                              className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-red-400"
+                              title="حذف"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </form>
+              )}
 
-              {/* Extra Admin Options */}
-              <div className="border-t border-slate-800 pt-4 space-y-3">
-                <span className="block text-xs font-bold text-slate-400">إجراءات الإدارة السريعة:</span>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    onClick={() => {
-                      setShowSettingsModal(false);
-                      if (activeView !== "storefront") setActiveView("storefront");
-                      setIsAddProductTriggered(true);
-                    }}
-                    className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500/50 text-amber-400 text-xs font-bold transition-all"
-                  >
-                    <Plus className="w-4 h-4" />
-                    إضافة منتج جديد
-                  </button>
+              {/* Tab 3: Winter & Marquee */}
+              {settingsTab === "marquee_winter" && (
+                <div className="space-y-6">
+                  {/* Winter Star-Snow Toggle */}
+                  <div className="bg-slate-950/80 p-4 rounded-2xl border border-blue-500/30 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-2">
+                        <Snowflake className="w-4 h-4 text-blue-400 animate-spin" />
+                        تأثير ثلج النجوم الشتوي (Winter Star-Snow):
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsWinterSnowEnabled(!isWinterSnowEnabled);
+                          handleAddActivity("TOGGLE_WINTER", `تم ${!isWinterSnowEnabled ? "تفعيل" : "إيقاف"} ثلج النجوم الشتوي.`);
+                        }}
+                        className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md ${
+                          isWinterSnowEnabled 
+                            ? "bg-blue-500 text-slate-950" 
+                            : "bg-slate-800 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {isWinterSnowEnabled ? "مفعل ومضاء ❄️" : "معطل"}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      عند التفعيل، تتساقط نجوم وبلورات ثلجية من أعلى الشاشة إلى أسفلها برقة دون التأثير على تصفح أو النقر على المنتجات، لمنح الزوار أجواء شتوية ساحرة.
+                    </p>
+                  </div>
 
+                  {/* Marquee Products Selection */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Sliders className="w-4 h-4 text-amber-400" />
+                        المنتجات المختارة للعرض في الشريط المتحرك:
+                      </h4>
+                      <span className="text-[11px] text-slate-400">
+                        ({products.filter(p => !p.is_archived && p.is_featured_marquee).length} معروض بالشريط)
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      حدد المنتجات التي تريد أن تتحرك ببطء في الشريط أعلى زر "أضف منتج"، وتقف تلقائياً عند مرور الفأرة، والضغط عليها ينقل العميل للمنتج مباشرة:
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-60 overflow-y-auto pr-1">
+                      {products.filter(p => !p.is_archived).map((p) => (
+                        <label
+                          key={p.id}
+                          className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${
+                            p.is_featured_marquee 
+                              ? "bg-amber-500/10 border-amber-500/40 text-white" 
+                              : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!p.is_featured_marquee}
+                            onChange={() => handleToggleMarqueeProduct(p.id)}
+                            className="w-4 h-4 accent-amber-500 rounded"
+                          />
+                          <img src={p.image_url} alt="" className="w-9 h-9 object-cover rounded-lg" />
+                          <div className="flex-1 text-right overflow-hidden">
+                            <span className="block text-xs font-bold truncate">{p.product_name}</span>
+                            <span className="text-[10px] text-amber-400">${p.price.toFixed(2)}</span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 4: Archived Products */}
+              {settingsTab === "archived" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Archive className="w-4 h-4 text-amber-500" />
+                      المنتجات المؤرشفة (مخفية من المتجر ويمكن استعادتها):
+                    </h4>
+                  </div>
+
+                  {products.filter(p => p.is_archived).length === 0 ? (
+                    <div className="text-center py-8 text-slate-500 text-xs space-y-2">
+                      <Archive className="w-10 h-10 mx-auto text-slate-700" />
+                      <p>لا توجد منتجات مؤرشفة حالياً في البوتيك.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {products.filter(p => p.is_archived).map((p) => (
+                        <div key={p.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-3">
+                            <img src={p.image_url} alt="" className="w-10 h-10 object-cover rounded-lg" />
+                            <div>
+                              <span className="block font-bold text-white">{p.product_name}</span>
+                              <span className="text-[11px] text-slate-400">{p.category_name} - ${p.price.toFixed(2)}</span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreProduct(p.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            استعادة للمتجر
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 5: Database Designer Shortcut */}
+              {settingsTab === "database" && (
+                <div className="space-y-4 text-center py-4">
+                  <div className="h-14 w-14 bg-amber-500/10 text-amber-400 rounded-2xl flex items-center justify-center mx-auto">
+                    <Database className="w-7 h-7" />
+                  </div>
+                  <h4 className="text-sm font-bold text-white">لوحة مصمم ومفسر قواعد البيانات MySQL</h4>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                    تم إخفاء لوحة قواعد البيانات من الواجهة العامة لتكون مخصصة للإدارة فقط عبر لوحة التحكم. يمكنك فتحها واستعراض كافة الجداول والاستعلامات التشغيلية.
+                  </p>
                   <button
+                    type="button"
                     onClick={() => {
                       setShowSettingsModal(false);
                       setActiveView("designer");
-                      handleAddActivity("OPEN_DESIGNER_ADMIN", "فتح لوحة مصمم ومفسر قواعد البيانات MySQL من خلال صلاحيات الإدارة.");
+                      handleAddActivity("OPEN_DESIGNER_ADMIN", "فتح لوحة مفسر ومصمم قواعد البيانات من إعدادات الإدارة.");
                     }}
-                    className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500/50 text-slate-300 hover:text-white text-xs font-semibold transition-all"
+                    className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all inline-flex items-center gap-2"
                   >
-                    <Database className="w-4 h-4 text-amber-500" />
-                    لوحة قواعد البيانات MySQL
+                    <Database className="w-4 h-4" />
+                    فتح لوحة قواعد البيانات الآن
                   </button>
                 </div>
+              )}
+
+              {/* Logout & Quick Add */}
+              <div className="border-t border-slate-800 pt-3 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSettingsModal(false);
+                    if (activeView !== "storefront") setActiveView("storefront");
+                    setIsAddProductTriggered(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500 text-amber-400 text-xs font-bold"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  أضف منتج جديد
+                </button>
 
                 <button
+                  type="button"
                   onClick={() => {
                     setIsSettingsUnlocked(false);
                     setShowSettingsModal(false);
                     handleAddActivity("ADMIN_LOCK", "تم قفل لوحة الإعدادات وتسجيل خروج المسؤول.");
                   }}
-                  className="w-full py-2 text-center text-xs text-slate-500 hover:text-red-400 transition-all"
+                  className="text-xs text-slate-500 hover:text-red-400 transition-all"
                 >
-                  قفل الإعدادات وتسجيل الخروج
+                  قفل الإعدادات والخروج
                 </button>
               </div>
             </motion.div>
