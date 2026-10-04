@@ -28,9 +28,15 @@ import {
   CheckCircle2,
   AlertCircle,
   Sliders,
-  Eye
+  Eye,
+  Copy,
+  MessageCircle,
+  Smartphone,
+  Send,
+  Receipt,
+  UserCheck
 } from "lucide-react";
-import { Product, Category, CartItem, Coupon, ActivityLog, Review, PurchaseCode } from "../types";
+import { Product, Category, CartItem, Coupon, ActivityLog, Review, PurchaseCode, AppCustomer, PaymentSettings } from "../types";
 import { SAMPLE_CATEGORIES, INITIAL_PRODUCT_REVIEWS } from "../dbSchemaData";
 
 interface StoreFrontProps {
@@ -63,6 +69,14 @@ interface StoreFrontProps {
   }) => void;
   isAddProductOpen?: boolean;
   onCloseAddProduct?: () => void;
+  cart: CartItem[];
+  setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
+  isCartOpen: boolean;
+  setIsCartOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  paymentSettings: PaymentSettings;
+  currentUser: AppCustomer | null;
+  onUserPurchase: (customerInfo: { username?: string; phone: string; name: string }) => void;
+  onOpenRegisterModal: () => void;
 }
 
 export default function StoreFront({ 
@@ -76,15 +90,21 @@ export default function StoreFront({
   onAddActivity, 
   onSimulateOrderCreation,
   isAddProductOpen,
-  onCloseAddProduct 
+  onCloseAddProduct,
+  cart,
+  setCart,
+  isCartOpen,
+  setIsCartOpen,
+  paymentSettings,
+  currentUser,
+  onUserPurchase,
+  onOpenRegisterModal
 }: StoreFrontProps) {
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"default" | "price-asc" | "price-desc" | "rating">("default");
   
-  // Shopping Cart States
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [isCartOpen, setIsCartOpen] = useState(false);
+  // Shopping Cart & Discount States
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [appliedPurchaseCode, setAppliedPurchaseCode] = useState<PurchaseCode | null>(null);
@@ -117,15 +137,37 @@ export default function StoreFront({
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState<"address" | "shipping" | "payment" | "success">("address");
   const [firstName, setFirstName] = useState("أحمد");
-  const [lastName, setLastName] = useState("علي");
-  const [phone, setPhone] = useState("0599112233");
-  const [addressLine, setAddressLine] = useState("شارع الملك فهد، حي المروج");
-  const [city, setCity] = useState("الرياض");
-  const [stateName, setStateName] = useState("الرياض");
-  const [postalCode, setPostalCode] = useState("12281");
-  const [country, setCountry] = useState("السعودية");
+  const [lastName, setLastName] = useState("كامل");
+  const [phone, setPhone] = useState("01014955160");
+  const [addressLine, setAddressLine] = useState("شارع الثورة، مصر الجديدة");
+  const [city, setCity] = useState("القاهرة");
+  const [stateName, setStateName] = useState("القاهرة");
+  const [postalCode, setPostalCode] = useState("11341");
+  const [country, setCountry] = useState("مصر");
   const [shippingMethod, setShippingMethod] = useState("Aramex Express");
-  const [paymentMethod, setPaymentMethod] = useState("Credit Card");
+  const [paymentMethod, setPaymentMethod] = useState<"wallet" | "instapay" | "fawry" | "cod">("wallet");
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Autofill name and phone if customer is logged in
+  useEffect(() => {
+    if (currentUser) {
+      if (currentUser.full_name) {
+        const parts = currentUser.full_name.trim().split(" ");
+        setFirstName(parts[0] || "أحمد");
+        setLastName(parts.slice(1).join(" ") || "كامل");
+      }
+      if (currentUser.phone) {
+        setPhone(currentUser.phone);
+      }
+    }
+  }, [currentUser]);
+
+  // Copy helper
+  const handleCopy = (text: string, fieldKey: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldKey);
+    setTimeout(() => setCopiedField(null), 2500);
+  };
   
   // Generated Order Summary State
   const [lastOrderDetails, setLastOrderDetails] = useState<any>(null);
@@ -299,6 +341,43 @@ export default function StoreFront({
   const tax = taxableAmount * 0.15; // 15% VAT
   const grandTotal = Math.max(0, taxableAmount + (appliedPurchaseCode ? 0 : shippingCost) + (appliedPurchaseCode ? 0 : tax));
 
+  // Get readable payment method description
+  const getPaymentMethodDisplay = () => {
+    switch (paymentMethod) {
+      case "instapay":
+        return `إنستاباي InstaPay (المستلم: ${paymentSettings.instapay_recipient_name || "بوتيك الأناقة"})`;
+      case "wallet":
+        return `محفظة إلكترونية كاش (المستلم: ${paymentSettings.wallet_recipient_name || "بوتيك الأناقة"})`;
+      case "fawry":
+        return `ماي فوري MyFawry (المستلم: ${paymentSettings.fawry_recipient_name || "بوتيك الأناقة"})`;
+      default:
+        return "الدفع عند الاستلام";
+    }
+  };
+
+  // WhatsApp order link generator with pre-filled message
+  const getWhatsAppUrl = () => {
+    const itemsList = cart.map((item, idx) => `• [${idx + 1}] ${item.product.product_name} (${item.quantity}×) ${item.selectedSize ? `مقاس ${item.selectedSize}` : ''} - بسعر: $${(item.product.price * item.quantity).toFixed(2)}`).join("\n");
+    
+    const msg = `مرحباً بوتيك الأناقة 👋
+أرغب في إتمام وتأكيد طلبي:
+${itemsList}
+
+💰 المبلغ الإجمالي الصافي: $${grandTotal.toFixed(2)}
+💳 طريقة التحويل المحددة: ${getPaymentMethodDisplay()}
+👤 اسم العميل: ${firstName} ${lastName}
+📱 رقم الهاتف: ${phone}
+📍 العنوان: ${addressLine}، ${city}، ${country}
+${appliedPurchaseCode ? `✨ كود الشراء المجاني: ${appliedPurchaseCode.code} (خصم 100%)` : ''}
+${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خصم ${appliedCoupon.discount_value}%)` : ''}
+
+تم تحويل المبلغ / جاري التجهيز، يرجى تأكيد استلام الطلب وشحنه!`;
+
+    const rawNumber = (paymentSettings.whatsapp_number || "01014955160").replace(/[^0-9]/g, "");
+    const formatted = rawNumber.startsWith("20") ? rawNumber : (rawNumber.startsWith("0") ? `20${rawNumber.substring(1)}` : `20${rawNumber}`);
+    return `https://wa.me/${formatted}?text=${encodeURIComponent(msg)}`;
+  };
+
   // Checkout process completion
   const handlePlaceOrder = () => {
     const orderNumber = `ORD-2026-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -322,6 +401,13 @@ export default function StoreFront({
       coupon_code: appliedPurchaseCode?.code || appliedCoupon?.coupon_code,
       payment_method: paymentMethod,
       shipping_method: shippingMethod
+    });
+
+    // Auto VIP update for the customer on purchase
+    onUserPurchase({
+      username: currentUser?.username,
+      phone,
+      name: `${firstName} ${lastName}`
     });
 
     // If 100% purchase code was used, consume it and generate next code automatically
@@ -1725,65 +1811,255 @@ export default function StoreFront({
                 {/* Step 3: Payment method */}
                 {checkoutStep === "payment" && (
                   <div className="space-y-4">
-                    <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-amber-500" />
-                      3. بوابة السداد والتحويل المالي (جدول payments)
-                    </h4>
-                    <p className="text-xs text-slate-400">سيتم توليد رمز مرجع المعاملة وحفظ السداد كحالة مكتملة بجدولpayments.</p>
+                    {/* Payment Alert Notice */}
+                    <div className="bg-amber-500/10 border-2 border-amber-500/40 p-3.5 sm:p-4 rounded-2xl flex items-start gap-3 text-right">
+                      <div className="h-8 sm:h-9 w-8 sm:w-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 mt-0.5 shadow-sm font-bold">
+                        <AlertCircle className="w-5 h-5 stroke-[2.5]" />
+                      </div>
+                      <div className="space-y-1">
+                        <h5 className="text-xs sm:text-sm font-black text-amber-950">تنبيه هام للعميل لإتمام الدفع وتأكيد الشحن:</h5>
+                        <p className="text-[11px] sm:text-xs text-amber-900 leading-relaxed font-semibold">
+                          يرجى تحويل قيمة الطلب عبر إحدى الطرق التالية (محفظة إلكترونية، إنستاباي، أو ماي فوري)، واستخدام <strong className="text-amber-950 font-black">زر النسخ</strong>، ثم الضغط على زر <strong className="text-emerald-700 font-black underline">"التوجه إلى واتساب لإرسال رسالة الدفع"</strong> لإرسال بيانات طلبك وإشعار التحويل وتأكيد الشحن فوراً!
+                        </p>
+                      </div>
+                    </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <label className={`p-4 border rounded-2xl cursor-pointer flex flex-col items-center justify-center gap-3 transition-all ${
-                        paymentMethod === "Credit Card" ? "border-amber-500 bg-amber-50/50" : "border-slate-100 bg-slate-50 hover:border-slate-200"
-                      }`}>
-                        <input type="radio" name="payment" checked={paymentMethod === "Credit Card"} onChange={() => setPaymentMethod("Credit Card")} className="sr-only" />
-                        <CreditCard className="w-6 h-6 text-slate-700" />
-                        <div className="text-center">
-                          <span className="block text-xs font-bold text-slate-950">بطاقة الائتمان</span>
-                          <span className="text-[10px] text-slate-500">فيزا / ماستركارد</span>
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-amber-500" />
+                        طريقة السداد والتحويل المالي:
+                      </h4>
+                      <span className="text-[11px] text-slate-500">اختر وسيلة الدفع المناسبة</span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {/* Option 1: Electronic Wallet */}
+                      <div 
+                        onClick={() => setPaymentMethod("wallet")}
+                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                          paymentMethod === "wallet" 
+                            ? "border-amber-500 bg-amber-50/40 ring-1 ring-amber-500/50 shadow-sm" 
+                            : "border-slate-200 bg-slate-50/50 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <input 
+                              type="radio" 
+                              name="payment" 
+                              checked={paymentMethod === "wallet"} 
+                              onChange={() => setPaymentMethod("wallet")} 
+                              className="w-4 h-4 accent-amber-500" 
+                            />
+                            <div className="h-8 w-8 rounded-xl bg-amber-500/20 text-amber-600 flex items-center justify-center font-bold">
+                              <Smartphone className="w-4 h-4" />
+                            </div>
+                            <div className="text-right">
+                              <span className="block text-xs font-bold text-slate-950">
+                                محفظة إلكترونية (فودافون كاش / أورنج / اتصالات / وي)
+                              </span>
+                              <span className="text-[11px] text-slate-600 font-mono font-semibold">
+                                رقم المحفظة: {paymentSettings.wallet_phone || "01014955160"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Copy Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopy(paymentSettings.wallet_phone || "01014955160", "wallet");
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-amber-500 text-slate-700 hover:text-slate-950 text-[11px] font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                            title="نسخ رقم المحفظة"
+                          >
+                            {copiedField === "wallet" ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="text-emerald-700">تم النسخ ✓</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                <span>نسخ</span>
+                              </>
+                            )}
+                          </button>
                         </div>
-                      </label>
 
-                      <label className={`p-4 border rounded-2xl cursor-pointer flex flex-col items-center justify-center gap-3 transition-all ${
-                        paymentMethod === "PayPal" ? "border-amber-500 bg-amber-50/50" : "border-slate-100 bg-slate-50 hover:border-slate-200"
-                      }`}>
-                        <input type="radio" name="payment" checked={paymentMethod === "PayPal"} onChange={() => setPaymentMethod("PayPal")} className="sr-only" />
-                        <CreditCard className="w-6 h-6 text-indigo-600" />
-                        <div className="text-center">
-                          <span className="block text-xs font-bold text-slate-950">بايبال PayPal</span>
-                          <span className="text-[10px] text-slate-500">تحويل مباشر مؤمن</span>
+                        {/* Recipient Name in small font */}
+                        <div className="mt-2 pt-2 border-t border-slate-200/60 text-right pr-7">
+                          <span className="text-[11px] text-slate-500">
+                            الاسم الذي سوف يظهر وقت التحويل: <strong className="text-slate-800 font-semibold">{paymentSettings.wallet_recipient_name || "بوتيك الأناقة"}</strong>
+                          </span>
                         </div>
-                      </label>
+                      </div>
 
-                      <label className={`p-4 border rounded-2xl cursor-pointer flex flex-col items-center justify-center gap-3 transition-all ${
-                        paymentMethod === "Apple Pay" ? "border-amber-500 bg-amber-50/50" : "border-slate-100 bg-slate-50 hover:border-slate-200"
-                      }`}>
-                        <input type="radio" name="payment" checked={paymentMethod === "Apple Pay"} onChange={() => setPaymentMethod("Apple Pay")} className="sr-only" />
-                        <CreditCard className="w-6 h-6 text-slate-900" />
-                        <div className="text-center">
-                          <span className="block text-xs font-bold text-slate-950">Apple Pay</span>
-                          <span className="text-[10px] text-slate-500">سداد فوري بنقرة واحدة</span>
+                      {/* Option 2: InstaPay */}
+                      <div 
+                        onClick={() => setPaymentMethod("instapay")}
+                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                          paymentMethod === "instapay" 
+                            ? "border-amber-500 bg-amber-50/40 ring-1 ring-amber-500/50 shadow-sm" 
+                            : "border-slate-200 bg-slate-50/50 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <input 
+                              type="radio" 
+                              name="payment" 
+                              checked={paymentMethod === "instapay"} 
+                              onChange={() => setPaymentMethod("instapay")} 
+                              className="w-4 h-4 accent-amber-500" 
+                            />
+                            <div className="h-8 w-8 rounded-xl bg-purple-500/20 text-purple-600 flex items-center justify-center font-bold">
+                              <Send className="w-4 h-4" />
+                            </div>
+                            <div className="text-right">
+                              <span className="block text-xs font-bold text-slate-950">
+                                إنستاباي InstaPay (تحويل بنكي ولحظي)
+                              </span>
+                              <span className="text-[11px] text-slate-600 font-mono font-semibold">
+                                المعرف / الرقم: {paymentSettings.instapay_address || paymentSettings.instapay_phone || "boutique@instapay"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Copy Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopy(paymentSettings.instapay_address || paymentSettings.instapay_phone || "boutique@instapay", "instapay");
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-amber-500 text-slate-700 hover:text-slate-950 text-[11px] font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                            title="نسخ عنوان إنستاباي"
+                          >
+                            {copiedField === "instapay" ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="text-emerald-700">تم النسخ ✓</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                <span>نسخ</span>
+                              </>
+                            )}
+                          </button>
                         </div>
-                      </label>
 
-                      <label className={`p-4 border rounded-2xl cursor-pointer flex flex-col items-center justify-center gap-3 transition-all ${
-                        paymentMethod === "Cash on Delivery" ? "border-amber-500 bg-amber-50/50" : "border-slate-100 bg-slate-50 hover:border-slate-200"
+                        {/* Recipient Name in small font */}
+                        <div className="mt-2 pt-2 border-t border-slate-200/60 text-right pr-7">
+                          <span className="text-[11px] text-slate-500">
+                            الاسم الذي سوف يظهر وقت التحويل: <strong className="text-slate-800 font-semibold">{paymentSettings.instapay_recipient_name || "بوتيك الأناقة"}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Option 3: MyFawry */}
+                      <div 
+                        onClick={() => setPaymentMethod("fawry")}
+                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                          paymentMethod === "fawry" 
+                            ? "border-amber-500 bg-amber-50/40 ring-1 ring-amber-500/50 shadow-sm" 
+                            : "border-slate-200 bg-slate-50/50 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <input 
+                              type="radio" 
+                              name="payment" 
+                              checked={paymentMethod === "fawry"} 
+                              onChange={() => setPaymentMethod("fawry")} 
+                              className="w-4 h-4 accent-amber-500" 
+                            />
+                            <div className="h-8 w-8 rounded-xl bg-blue-500/20 text-blue-600 flex items-center justify-center font-bold">
+                              <Receipt className="w-4 h-4" />
+                            </div>
+                            <div className="text-right">
+                              <span className="block text-xs font-bold text-slate-950">
+                                ماي فوري MyFawry (التحويل برقم هاتف أو كود)
+                              </span>
+                              <span className="text-[11px] text-slate-600 font-mono font-semibold">
+                                رقم الهاتف: {paymentSettings.fawry_phone || "01014955160"} {paymentSettings.fawry_code ? `(كود: ${paymentSettings.fawry_code})` : ""}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Copy Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopy(paymentSettings.fawry_phone || "01014955160", "fawry");
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-amber-500 text-slate-700 hover:text-slate-950 text-[11px] font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                            title="نسخ رقم فوري"
+                          >
+                            {copiedField === "fawry" ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="text-emerald-700">تم النسخ ✓</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                <span>نسخ</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Recipient Name in small font */}
+                        <div className="mt-2 pt-2 border-t border-slate-200/60 text-right pr-7">
+                          <span className="text-[11px] text-slate-500">
+                            الاسم الذي سوف يظهر وقت التحويل: <strong className="text-slate-800 font-semibold">{paymentSettings.fawry_recipient_name || "بوتيك الأناقة"}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Option 4: Cash on Delivery */}
+                      <label className={`p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3 transition-all ${
+                        paymentMethod === "cod" 
+                          ? "border-amber-500 bg-amber-50/40 ring-1 ring-amber-500/50" 
+                          : "border-slate-200 bg-slate-50/50 hover:border-slate-300"
                       }`}>
-                        <input type="radio" name="payment" checked={paymentMethod === "Cash on Delivery"} onChange={() => setPaymentMethod("Cash on Delivery")} className="sr-only" />
-                        <CreditCard className="w-6 h-6 text-amber-600" />
-                        <div className="text-center">
-                          <span className="block text-xs font-bold text-slate-950">الدفع عند الاستلام</span>
-                          <span className="text-[10px] text-slate-500">دفع نقد عيني وقت التسليم</span>
+                        <input 
+                          type="radio" 
+                          name="payment" 
+                          checked={paymentMethod === "cod"} 
+                          onChange={() => setPaymentMethod("cod")} 
+                          className="w-4 h-4 accent-amber-500" 
+                        />
+                        <div className="text-right flex-1">
+                          <span className="block text-xs font-bold text-slate-950">الدفع عند الاستلام (نقداً)</span>
+                          <span className="text-[10px] text-slate-500">سداد يدوي لمندوب الشحن عند استلام الطرد</span>
                         </div>
                       </label>
                     </div>
 
-                    {/* Order summary small row */}
-                    <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl flex items-center justify-between text-xs">
-                      <span className="text-slate-500">المجموع النهائي المستحق:</span>
-                      <strong className="text-slate-950 text-base">${grandTotal.toFixed(2)}</strong>
+                    {/* Order summary row */}
+                    <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-xl flex items-center justify-between text-xs">
+                      <span className="text-slate-600 font-semibold">المجموع النهائي المستحق:</span>
+                      <strong className="text-slate-950 text-base font-black">${grandTotal.toFixed(2)}</strong>
                     </div>
 
-                    <div className="flex gap-3 pt-3">
+                    {/* WhatsApp Direct Action Button */}
+                    <a
+                      href={getWhatsAppUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs sm:text-sm font-black transition-all shadow-lg flex items-center justify-center gap-2 group text-center"
+                    >
+                      <MessageCircle className="w-5 h-5 group-hover:scale-110 transition-transform text-white shrink-0" />
+                      <span>التوجه إلى واتساب لإرسال رسالة الدفع وتأكيد البيع ({paymentSettings.whatsapp_number || "01014955160"})</span>
+                    </a>
+
+                    <div className="flex gap-3 pt-2">
                       <button
                         onClick={() => setCheckoutStep("shipping")}
                         className="flex-1 py-3 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50 transition-all"
@@ -1792,8 +2068,9 @@ export default function StoreFront({
                       </button>
                       <button
                         onClick={handlePlaceOrder}
-                        className="flex-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+                        className="flex-2 py-3 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
                       >
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                         تأكيد وإتمام الشراء الفعلي
                       </button>
                     </div>

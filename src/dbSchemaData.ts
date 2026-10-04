@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { DbTableSchema, Product, Category, Coupon, Review, PurchaseCode } from "./types";
+import { DbTableSchema, Product, Category, Coupon, Review, PurchaseCode, AppCustomer, PaymentSettings } from "./types";
 
 // 1. Interactive e-commerce products
 export const SAMPLE_CATEGORIES: Category[] = [
@@ -161,6 +161,51 @@ export const INITIAL_PURCHASE_CODES: PurchaseCode[] = [
     created_at: "2026-10-04 14:00"
   }
 ];
+
+export const INITIAL_CUSTOMERS: AppCustomer[] = [
+  {
+    id: 1,
+    username: "ahmed_ali",
+    password: "Password#123",
+    full_name: "أحمد علي",
+    phone: "01012345678",
+    is_vip: true,
+    purchases_count: 2,
+    created_at: "2026-10-01 10:30"
+  },
+  {
+    id: 2,
+    username: "sara_fashion",
+    password: "Sara@2026!",
+    full_name: "سارة عمر",
+    phone: "01198765432",
+    is_vip: true,
+    purchases_count: 1,
+    created_at: "2026-10-02 14:15"
+  },
+  {
+    id: 3,
+    username: "mahmoud_vip",
+    password: "VIP#User_99",
+    full_name: "محمود حسن",
+    phone: "01234567890",
+    is_vip: true,
+    purchases_count: 0,
+    created_at: "2026-10-03 18:40"
+  }
+];
+
+export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
+  whatsapp_number: "01014955160",
+  instapay_address: "boutique@instapay",
+  instapay_phone: "01014955160",
+  instapay_recipient_name: "أحمد كامل (بوتيك الأناقة)",
+  wallet_phone: "01014955160",
+  wallet_recipient_name: "أحمد كامل (فودافون كاش / المحفظة)",
+  fawry_code: "987654321",
+  fawry_phone: "01014955160",
+  fawry_recipient_name: "أحمد كامل (ماي فوري)"
+};
 
 export const SAMPLE_COUPONS: Coupon[] = [
   {

@@ -30,14 +30,29 @@ import {
   Edit2,
   Sliders,
   CheckCircle2,
-  Percent
+  Percent,
+  CreditCard,
+  Search,
+  Copy,
+  MessageCircle,
+  LogOut,
+  User,
+  Users,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import StoreFront from "./components/StoreFront";
 import DbDesigner from "./components/DbDesigner";
 import WinterSnowEffect from "./components/WinterSnowEffect";
 import { MockSqlEngine } from "./sqlEngine";
-import { ActivityLog, Product, Coupon, PurchaseCode } from "./types";
-import { SAMPLE_PRODUCTS, SAMPLE_COUPONS, INITIAL_PURCHASE_CODES } from "./dbSchemaData";
+import { ActivityLog, Product, Coupon, PurchaseCode, AppCustomer, PaymentSettings, CartItem } from "./types";
+import { 
+  SAMPLE_PRODUCTS, 
+  SAMPLE_COUPONS, 
+  INITIAL_PURCHASE_CODES, 
+  INITIAL_CUSTOMERS, 
+  DEFAULT_PAYMENT_SETTINGS 
+} from "./dbSchemaData";
 
 export default function App() {
   const [activeView, setActiveView] = useState<"storefront" | "designer">("storefront");
@@ -68,13 +83,44 @@ export default function App() {
   // Single-use 100% Purchase Codes state
   const [purchaseCodes, setPurchaseCodes] = useState<PurchaseCode[]>(INITIAL_PURCHASE_CODES);
 
+  // Shopping Cart state lifted to top level
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+
+  // Egyptian Payment Methods Settings state
+  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(DEFAULT_PAYMENT_SETTINGS);
+  const [tempPaymentSettings, setTempPaymentSettings] = useState<PaymentSettings>(DEFAULT_PAYMENT_SETTINGS);
+  const [paymentSaveSuccess, setPaymentSaveSuccess] = useState(false);
+
+  // Customers & Accounts Database state
+  const [customers, setCustomers] = useState<AppCustomer[]>(INITIAL_CUSTOMERS);
+  const [currentUser, setCurrentUser] = useState<AppCustomer | null>(null);
+  const [showUserAuthModal, setShowUserAuthModal] = useState(false);
+  const [userAuthMode, setUserAuthMode] = useState<"register" | "login">("register");
+  const [authUsername, setAuthUsername] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authFullName, setAuthFullName] = useState("");
+  const [authPhone, setAuthPhone] = useState("");
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
+  const [userAuthError, setUserAuthError] = useState("");
+  const [userAuthSuccess, setUserAuthSuccess] = useState("");
+
+  // Customer Management in Settings state
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
+  const [editCustUsername, setEditCustUsername] = useState("");
+  const [editCustPassword, setEditCustPassword] = useState("");
+  const [editCustFullName, setEditCustFullName] = useState("");
+  const [editCustPhone, setEditCustPhone] = useState("");
+  const [editCustVip, setEditCustVip] = useState(false);
+
   // Settings & Authentication States
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isSettingsUnlocked, setIsSettingsUnlocked] = useState(false);
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [authError, setAuthError] = useState("");
-  const [settingsTab, setSettingsTab] = useState<"site" | "coupons" | "marquee_winter" | "archived" | "database">("site");
+  const [settingsTab, setSettingsTab] = useState<"site" | "coupons" | "marquee_winter" | "archived" | "payment" | "customers" | "database">("site");
 
   // Temp form states for settings editing
   const [tempSiteName, setTempSiteName] = useState(siteConfig.siteName);
@@ -262,6 +308,197 @@ export default function App() {
     setProducts(products.map(p => p.id === id ? { ...p, is_featured_marquee: !p.is_featured_marquee } : p));
   };
 
+  // Payment Settings Save Handler
+  const handleSavePaymentSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPaymentSettings(tempPaymentSettings);
+    setPaymentSaveSuccess(true);
+    setTimeout(() => setPaymentSaveSuccess(false), 2500);
+    handleAddActivity("UPDATE_PAYMENT_CONFIG", "تم تحديث حسابات وبيانات طرق الدفع (إنستاباي، المحفظة، ماي فوري، واتساب) في إعدادات البوتيك.");
+  };
+
+  // Automatic VIP on user purchase
+  const handleUserPurchase = (customerInfo: { username?: string; phone: string; name: string }) => {
+    setCustomers(prev => prev.map(cust => {
+      const matchesCurrent = currentUser && cust.id === currentUser.id;
+      const matchesPhone = customerInfo.phone && cust.phone === customerInfo.phone;
+      const matchesUsername = customerInfo.username && cust.username.toLowerCase() === customerInfo.username.toLowerCase();
+      
+      if (matchesCurrent || matchesPhone || matchesUsername) {
+        return {
+          ...cust,
+          purchases_count: cust.purchases_count + 1,
+          is_vip: true // Automatically VIP on purchase!
+        };
+      }
+      return cust;
+    }));
+
+    if (currentUser) {
+      setCurrentUser(prev => prev ? {
+        ...prev,
+        purchases_count: prev.purchases_count + 1,
+        is_vip: true
+      } : null);
+    }
+  };
+
+  // User Registration (Allows letters, numbers, symbols, anything)
+  const handleUserRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    setUserAuthError("");
+    setUserAuthSuccess("");
+
+    if (!authUsername.trim()) {
+      setUserAuthError("يرجى إدخال اسم المستخدم.");
+      return;
+    }
+    if (!authPassword) {
+      setUserAuthError("يرجى إدخال كلمة المرور (مسموح بحروف، أرقام، رموز).");
+      return;
+    }
+
+    const exists = customers.some(c => c.username.toLowerCase() === authUsername.trim().toLowerCase());
+    if (exists) {
+      setUserAuthError("اسم المستخدم مسجل مسبقاً، يرجى اختيار اسم مستخدم آخر أو تسجيل الدخول.");
+      return;
+    }
+
+    const newCust: AppCustomer = {
+      id: Date.now(),
+      username: authUsername.trim(),
+      password: authPassword,
+      full_name: authFullName.trim() || authUsername.trim(),
+      phone: authPhone.trim() || undefined,
+      is_vip: false,
+      purchases_count: 0,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 16)
+    };
+
+    // Newest customer at the top!
+    setCustomers(prev => [newCust, ...prev]);
+    setCurrentUser(newCust);
+    setUserAuthSuccess(`أهلاً بك يا ${newCust.username}! تم إنشاء حسابك وتسجيل دخولك بنجاح.`);
+    handleAddActivity("REGISTER_USER", `تم تسجيل حساب عميل جديد بالاسم "${newCust.username}".`);
+    
+    setTimeout(() => {
+      setShowUserAuthModal(false);
+      setUserAuthSuccess("");
+      setAuthUsername("");
+      setAuthPassword("");
+      setAuthFullName("");
+      setAuthPhone("");
+    }, 1200);
+  };
+
+  // User Login
+  const handleUserLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setUserAuthError("");
+    setUserAuthSuccess("");
+
+    const found = customers.find(
+      c => c.username.toLowerCase() === authUsername.trim().toLowerCase() && c.password === authPassword
+    );
+
+    if (found) {
+      const updatedUser = {
+        ...found,
+        is_vip: found.purchases_count > 0 ? true : found.is_vip
+      };
+      setCurrentUser(updatedUser);
+      setUserAuthSuccess(`مرحباً بك مجدداً يا ${found.username}!`);
+      handleAddActivity("LOGIN_USER", `تم تسجيل دخول العميل "${found.username}".`);
+      
+      setTimeout(() => {
+        setShowUserAuthModal(false);
+        setUserAuthSuccess("");
+        setAuthUsername("");
+        setAuthPassword("");
+      }, 1000);
+    } else {
+      setUserAuthError("اسم المستخدم أو كلمة المرور غير صحيحة.");
+    }
+  };
+
+  const handleLogout = () => {
+    if (currentUser) {
+      handleAddActivity("LOGOUT_USER", `تم تسجيل خروج العميل "${currentUser.username}".`);
+    }
+    setCurrentUser(null);
+  };
+
+  // VIP Status Toggle in Settings
+  const handleToggleVip = (id: number) => {
+    setCustomers(prev => prev.map(c => {
+      if (c.id === id) {
+        const nextVip = !c.is_vip;
+        handleAddActivity("TOGGLE_VIP", `تم ${nextVip ? "تفعيل" : "إلغاء"} شارة VIP للعميل "${c.username}".`);
+        return { ...c, is_vip: nextVip };
+      }
+      return c;
+    }));
+
+    if (currentUser && currentUser.id === id) {
+      setCurrentUser(prev => prev ? { ...prev, is_vip: !prev.is_vip } : null);
+    }
+  };
+
+  // Delete Customer in Settings
+  const handleDeleteCustomer = (id: number, username: string) => {
+    if (confirm(`هل أنت متأكد من حذف حساب العميل "${username}" نهائياً من قاعدة البيانات؟`)) {
+      setCustomers(prev => prev.filter(c => c.id !== id));
+      if (currentUser && currentUser.id === id) {
+        setCurrentUser(null);
+      }
+      handleAddActivity("DELETE_CUSTOMER", `تم حذف حساب العميل "${username}" من قاعدة البيانات.`);
+    }
+  };
+
+  // Start Editing Customer
+  const handleStartEditCustomer = (cust: AppCustomer) => {
+    setEditingCustomerId(cust.id);
+    setEditCustUsername(cust.username);
+    setEditCustPassword(cust.password || "");
+    setEditCustFullName(cust.full_name || "");
+    setEditCustPhone(cust.phone || "");
+    setEditCustVip(cust.is_vip);
+  };
+
+  // Save Customer Edit
+  const handleSaveEditCustomer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCustomerId || !editCustUsername.trim()) return;
+
+    setCustomers(prev => prev.map(c => {
+      if (c.id === editingCustomerId) {
+        return {
+          ...c,
+          username: editCustUsername.trim(),
+          password: editCustPassword || c.password,
+          full_name: editCustFullName.trim() || c.full_name,
+          phone: editCustPhone.trim() || c.phone,
+          is_vip: editCustVip
+        };
+      }
+      return c;
+    }));
+
+    if (currentUser && currentUser.id === editingCustomerId) {
+      setCurrentUser(prev => prev ? {
+        ...prev,
+        username: editCustUsername.trim(),
+        password: editCustPassword || prev.password,
+        full_name: editCustFullName.trim() || prev.full_name,
+        phone: editCustPhone.trim() || prev.phone,
+        is_vip: editCustVip
+      } : null);
+    }
+
+    handleAddActivity("UPDATE_CUSTOMER", `تم تعديل بيانات حساب العميل "${editCustUsername}".`);
+    setEditingCustomerId(null);
+  };
+
   // Simulate order creation on database side
   const handleSimulateOrderCreation = (orderData: {
     customerName: string;
@@ -413,17 +650,41 @@ export default function App() {
               <span className="hidden sm:inline">أضف منتج</span>
             </button>
 
-            {/* Activity Logs Trigger */}
+            {/* Shopping Cart Trigger (Placed where Log was, Log is hidden) */}
             <button
-              onClick={() => setShowLogDrawer(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold hover:border-slate-700 transition-all"
-              title="سجل العمليات"
+              onClick={() => {
+                if (activeView !== "storefront") setActiveView("storefront");
+                setIsCartOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500 hover:text-slate-950 text-xs font-bold transition-all shadow-sm group"
+              title="سلة التسوق"
             >
-              <Activity className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden md:inline">السجل</span>
-              <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded-full text-slate-400 font-mono">
-                {activityLogs.length}
+              <ShoppingBag className="w-3.5 h-3.5 text-amber-400 group-hover:text-slate-950 transition-colors" />
+              <span className="hidden sm:inline">سلة التسوق</span>
+              <span className="text-[10px] bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded-full font-black min-w-[18px] text-center">
+                {cart.reduce((sum, item) => sum + item.quantity, 0)}
               </span>
+            </button>
+
+            {/* Account Registration / Login Trigger */}
+            <button
+              onClick={() => setShowUserAuthModal(true)}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                currentUser 
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20" 
+                  : "bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700"
+              }`}
+              title={currentUser ? `حساب: ${currentUser.username}` : "تسجيل حساب جديد"}
+            >
+              <UserCheck className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden md:inline max-w-[110px] truncate">
+                {currentUser ? currentUser.username : "تسجيل حساب"}
+              </span>
+              {currentUser?.is_vip && (
+                <span className="text-[9px] bg-amber-500 text-slate-950 px-1 py-0.2 rounded font-black flex items-center gap-0.5">
+                  ⭐ VIP
+                </span>
+              )}
             </button>
 
             {/* Quick Winter Snow Stars Toggle */}
@@ -485,6 +746,14 @@ export default function App() {
                 onSimulateOrderCreation={handleSimulateOrderCreation}
                 isAddProductOpen={isAddProductTriggered}
                 onCloseAddProduct={() => setIsAddProductTriggered(false)}
+                cart={cart}
+                setCart={setCart}
+                isCartOpen={isCartOpen}
+                setIsCartOpen={setIsCartOpen}
+                paymentSettings={paymentSettings}
+                currentUser={currentUser}
+                onUserPurchase={handleUserPurchase}
+                onOpenRegisterModal={() => setShowUserAuthModal(true)}
               />
             ) : (
               <DbDesigner 
@@ -645,6 +914,33 @@ export default function App() {
                 >
                   <Archive className="w-3.5 h-3.5 text-amber-500" />
                   المؤرشفة ({products.filter(p => p.is_archived).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTempPaymentSettings(paymentSettings);
+                    setSettingsTab("payment");
+                  }}
+                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                    settingsTab === "payment" 
+                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <CreditCard className="w-3.5 h-3.5 text-amber-400" />
+                  طرق الدفع
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab("customers")}
+                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                    settingsTab === "customers" 
+                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 text-blue-400" />
+                  العملاء ({customers.length})
                 </button>
                 <button
                   type="button"
@@ -1037,6 +1333,367 @@ export default function App() {
                 </div>
               )}
 
+              {/* Tab: Payment Settings */}
+              {settingsTab === "payment" && (
+                <form onSubmit={handleSavePaymentSettings} className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <CreditCard className="w-4 h-4 text-amber-500" />
+                        إعدادات طرق الدفع والتحويل (إنستاباي، المحفظة، ماي فوري، واتساب):
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        اكتب هنا الأرقام وعناوين الحسابات وأسماء المستلمين التي ستظهر للعملاء في شاشة الدفع.
+                      </p>
+                    </div>
+                  </div>
+
+                  {paymentSaveSuccess && (
+                    <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-400 text-xs font-bold flex items-center gap-2">
+                      <Check className="w-4 h-4" />
+                      تم حفظ إعدادات طرق الدفع بنجاح وتحديثها في شاشة الدفع!
+                    </div>
+                  )}
+
+                  {/* Section 1: InstaPay */}
+                  <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-3">
+                    <h5 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                      1. إنستاباي InstaPay (تحويل لحظي)
+                    </h5>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-right">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300">عنوان إنستاباي (IPA أو المعرف)</label>
+                        <input
+                          type="text"
+                          value={tempPaymentSettings.instapay_address}
+                          onChange={e => setTempPaymentSettings({ ...tempPaymentSettings, instapay_address: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                          placeholder="username@instapay"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300">رقم هاتف إنستاباي (اختياري)</label>
+                        <input
+                          type="text"
+                          value={tempPaymentSettings.instapay_phone}
+                          onChange={e => setTempPaymentSettings({ ...tempPaymentSettings, instapay_phone: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                          placeholder="01014955160"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1 text-right">
+                      <label className="text-[11px] font-semibold text-amber-300">الاسم الذي سوف يتم الدفع له (يظهر بخط صغير تحت العملية)</label>
+                      <input
+                        type="text"
+                        value={tempPaymentSettings.instapay_recipient_name}
+                        onChange={e => setTempPaymentSettings({ ...tempPaymentSettings, instapay_recipient_name: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                        placeholder="اسم المستلم الثلاثي كما يظهر في إنستاباي"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Section 2: Electronic Wallet */}
+                  <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-3">
+                    <h5 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                      2. المحفظة الإلكترونية (فودافون كاش / أورنج / اتصالات / وي)
+                    </h5>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-right">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300">رقم المحفظة (التحويل برقم هاتف)</label>
+                        <input
+                          type="text"
+                          value={tempPaymentSettings.wallet_phone}
+                          onChange={e => setTempPaymentSettings({ ...tempPaymentSettings, wallet_phone: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                          placeholder="01014955160"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-amber-300">الاسم الذي سوف يتم الدفع له (يظهر بخط صغير تحت العملية)</label>
+                        <input
+                          type="text"
+                          value={tempPaymentSettings.wallet_recipient_name}
+                          onChange={e => setTempPaymentSettings({ ...tempPaymentSettings, wallet_recipient_name: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                          placeholder="اسم صاحب المحفظة"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 3: MyFawry */}
+                  <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-3">
+                    <h5 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                      3. ماي فوري MyFawry (التحويل برقم هاتف أو كود)
+                    </h5>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-right">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300">رقم هاتف ماي فوري للتحويل</label>
+                        <input
+                          type="text"
+                          value={tempPaymentSettings.fawry_phone}
+                          onChange={e => setTempPaymentSettings({ ...tempPaymentSettings, fawry_phone: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                          placeholder="01014955160"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300">كود فوري / رقم التاجر (اختياري)</label>
+                        <input
+                          type="text"
+                          value={tempPaymentSettings.fawry_code}
+                          onChange={e => setTempPaymentSettings({ ...tempPaymentSettings, fawry_code: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                          placeholder="987654321"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1 text-right">
+                      <label className="text-[11px] font-semibold text-amber-300">الاسم الذي سوف يتم الدفع له (يظهر بخط صغير تحت العملية)</label>
+                      <input
+                        type="text"
+                        value={tempPaymentSettings.fawry_recipient_name}
+                        onChange={e => setTempPaymentSettings({ ...tempPaymentSettings, fawry_recipient_name: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                        placeholder="اسم المستلم في ماي فوري"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Section 4: WhatsApp Number */}
+                  <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-3">
+                    <h5 className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                      <MessageCircle className="w-4 h-4" />
+                      4. رقم الواتساب لإرسال رسالة الدفع وإتمام البيع
+                    </h5>
+                    <div className="space-y-1 text-right">
+                      <label className="text-[11px] font-semibold text-slate-300">رقم الواتساب المعتمد للمتجر</label>
+                      <input
+                        type="text"
+                        value={tempPaymentSettings.whatsapp_number}
+                        onChange={e => setTempPaymentSettings({ ...tempPaymentSettings, whatsapp_number: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                        placeholder="01014955160"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all"
+                  >
+                    حفظ إعدادات طرق الدفع والتحويل
+                  </button>
+                </form>
+              )}
+
+              {/* Tab: Customers & VIP Accounts */}
+              {settingsTab === "customers" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Users className="w-4 h-4 text-amber-500" />
+                        قائمة العملاء وحسابات VIP المسجلة:
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        يظهر الأحدث في الأعلى، مع شارة VIP داخلية تُمنح تلقائياً عند الشراء أو يدوياً.
+                      </p>
+                    </div>
+                    <span className="text-[11px] bg-slate-800 text-amber-400 font-bold px-2 py-0.5 rounded-full border border-slate-700">
+                      {customers.length} عميل
+                    </span>
+                  </div>
+
+                  {/* Customer Search Bar */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={customerSearchQuery}
+                      onChange={e => setCustomerSearchQuery(e.target.value)}
+                      placeholder="البحث باسم العميل أو اسم المستخدم أو رقم الهاتف..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-slate-500"
+                    />
+                    <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                  </div>
+
+                  {/* Customer Inline Edit Modal/Card */}
+                  {editingCustomerId && (
+                    <form onSubmit={handleSaveEditCustomer} className="p-4 bg-slate-950 border-2 border-amber-500/40 rounded-2xl space-y-3">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <h5 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                          <Edit2 className="w-3.5 h-3.5" />
+                          تعديل بيانات العميل: {editCustUsername}
+                        </h5>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCustomerId(null)}
+                          className="text-slate-400 hover:text-white text-xs"
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-right">
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-slate-400">اسم المستخدم</label>
+                          <input
+                            type="text"
+                            value={editCustUsername}
+                            onChange={e => setEditCustUsername(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                            required
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-slate-400">كلمة المرور (حروف، أرقام، رموز)</label>
+                          <input
+                            type="text"
+                            value={editCustPassword}
+                            onChange={e => setEditCustPassword(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-slate-400">الاسم الكامل</label>
+                          <input
+                            type="text"
+                            value={editCustFullName}
+                            onChange={e => setEditCustFullName(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-slate-400">رقم الهاتف</label>
+                          <input
+                            type="text"
+                            value={editCustPhone}
+                            onChange={e => setEditCustPhone(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="checkbox"
+                          id="editCustVipCheckbox"
+                          checked={editCustVip}
+                          onChange={e => setEditCustVip(e.target.checked)}
+                          className="w-4 h-4 accent-amber-500 rounded"
+                        />
+                        <label htmlFor="editCustVipCheckbox" className="text-xs font-bold text-amber-400 cursor-pointer">
+                          تفعيل شارة VIP للعميل (شراء فوري في أي وقت)
+                        </label>
+                      </div>
+
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          type="submit"
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-sm"
+                        >
+                          حفظ التعديلات
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCustomerId(null)}
+                          className="px-4 py-2 bg-slate-800 text-slate-300 text-xs rounded-xl hover:bg-slate-700"
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Customer List (Newest first, filtered by search query) */}
+                  <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
+                    {customers
+                      .filter(c => {
+                        const q = customerSearchQuery.trim().toLowerCase();
+                        if (!q) return true;
+                        return (
+                          c.username.toLowerCase().includes(q) ||
+                          (c.full_name && c.full_name.toLowerCase().includes(q)) ||
+                          (c.phone && c.phone.includes(q))
+                        );
+                      })
+                      .map((cust) => (
+                        <div
+                          key={cust.id}
+                          className="p-3 bg-slate-950 border border-slate-800 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-right"
+                        >
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-white text-xs sm:text-sm">
+                                {cust.full_name || cust.username}
+                              </span>
+                              <span className="text-[11px] text-amber-400 font-mono">
+                                (@{cust.username})
+                              </span>
+                              {cust.is_vip && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-xs">
+                                  ⭐ عميل VIP (شراء في أي وقت)
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap">
+                              <span>📱 {cust.phone || "بدون هاتف"}</span>
+                              <span>🔑 كلمة المرور: <span className="font-mono text-slate-300">{cust.password || "••••"}</span></span>
+                              <span className="bg-slate-900 px-1.5 py-0.5 rounded text-emerald-400 font-bold border border-slate-800">
+                                عدد المشتريات: {cust.purchases_count}
+                              </span>
+                              <span className="text-slate-500">📅 {cust.created_at}</span>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons: VIP, Edit, Delete */}
+                          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleVip(cust.id)}
+                              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1 ${
+                                cust.is_vip
+                                  ? "bg-amber-500 text-slate-950 hover:bg-amber-600 shadow-sm"
+                                  : "bg-slate-800 text-amber-400 hover:bg-slate-700 border border-amber-500/30"
+                              }`}
+                              title={cust.is_vip ? "إلغاء شارة VIP" : "منح شارة VIP"}
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              {cust.is_vip ? "إلغاء VIP" : "زر VIP"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditCustomer(cust)}
+                              className="px-2.5 py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white text-[11px] font-bold transition-all border border-blue-500/30 flex items-center gap-1"
+                              title="تعديل بيانات العميل"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                              تعديل
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCustomer(cust.id, cust.username)}
+                              className="px-2.5 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white text-[11px] font-bold transition-all border border-red-500/30 flex items-center gap-1"
+                              title="حذف العميل"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              حذف
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
               {/* Tab 5: Database Designer Shortcut */}
               {settingsTab === "database" && (
                 <div className="space-y-4 text-center py-4">
@@ -1089,6 +1746,282 @@ export default function App() {
                   قفل الإعدادات والخروج
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* User / Customer Account Registration & Authentication Modal */}
+      <AnimatePresence>
+        {showUserAuthModal && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0" onClick={() => setShowUserAuthModal(false)}></div>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl text-right z-10 space-y-4"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <button 
+                  onClick={() => setShowUserAuthModal(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-2">
+                  <div>
+                    <h3 className="font-bold text-white text-base">
+                      {currentUser ? "حساب العميل الشخصي" : "تسجيل حساب بالبوتيك"}
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      {currentUser ? "إدارة حسابك وعضوية VIP والمشتريات" : "تسجيل مستخدم جديد أو تسجيل الدخول"}
+                    </p>
+                  </div>
+                  <div className="h-9 w-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                    <UserCheck className="w-5 h-5" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Logged in state display */}
+              {currentUser ? (
+                <div className="space-y-4 text-right">
+                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-white text-base">
+                        {currentUser.full_name || currentUser.username}
+                      </span>
+                      {currentUser.is_vip ? (
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-amber-500 text-slate-950 shadow-md">
+                          ⭐ عميل VIP
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                          عميل مسجل
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-xs text-slate-300 space-y-1.5 border-t border-slate-900 pt-2.5">
+                      <p className="flex justify-between">
+                        <span className="text-slate-500">اسم المستخدم:</span>
+                        <strong className="text-amber-400 font-mono">@{currentUser.username}</strong>
+                      </p>
+                      <p className="flex justify-between">
+                        <span className="text-slate-500">رقم الهاتف:</span>
+                        <span className="font-mono text-white">{currentUser.phone || "غير مسجل"}</span>
+                      </p>
+                      <p className="flex justify-between">
+                        <span className="text-slate-500">عدد عمليات الشراء السابقة:</span>
+                        <strong className="text-emerald-400">{currentUser.purchases_count} عملية</strong>
+                      </p>
+                      <p className="flex justify-between">
+                        <span className="text-slate-500">تاريخ التسجيل:</span>
+                        <span className="text-slate-400">{currentUser.created_at}</span>
+                      </p>
+                    </div>
+
+                    {currentUser.is_vip && (
+                      <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-[11px] text-amber-300 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>أنت عميل VIP متميز! يمكنك الشراء الفوري في أي وقت والاستفادة من العروض الخاصة.</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowUserAuthModal(false)}
+                      className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-all"
+                    >
+                      إغلاق
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleLogout();
+                        setShowUserAuthModal(false);
+                      }}
+                      className="py-2.5 px-4 bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white text-xs font-bold rounded-xl transition-all border border-red-500/30 flex items-center gap-1.5"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      تسجيل الخروج
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Registration / Sign in Tabs & Forms */
+                <div className="space-y-4">
+                  <div className="flex border-b border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserAuthMode("register");
+                        setUserAuthError("");
+                        setUserAuthSuccess("");
+                      }}
+                      className={`flex-1 py-2 text-xs font-bold text-center border-b-2 transition-all ${
+                        userAuthMode === "register"
+                          ? "border-amber-500 text-amber-400"
+                          : "border-transparent text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      إنشاء حساب جديد
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserAuthMode("login");
+                        setUserAuthError("");
+                        setUserAuthSuccess("");
+                      }}
+                      className={`flex-1 py-2 text-xs font-bold text-center border-b-2 transition-all ${
+                        userAuthMode === "login"
+                          ? "border-amber-500 text-amber-400"
+                          : "border-transparent text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      تسجيل الدخول
+                    </button>
+                  </div>
+
+                  {userAuthError && (
+                    <div className="p-3 bg-red-500/20 border border-red-500/40 rounded-xl text-red-400 text-xs font-semibold">
+                      {userAuthError}
+                    </div>
+                  )}
+
+                  {userAuthSuccess && (
+                    <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-400 text-xs font-bold flex items-center gap-2">
+                      <Check className="w-4 h-4" />
+                      {userAuthSuccess}
+                    </div>
+                  )}
+
+                  {userAuthMode === "register" ? (
+                    /* Register Form */
+                    <form onSubmit={handleUserRegister} className="space-y-3 text-right">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-300">
+                          اسم المستخدم <span className="text-amber-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={authUsername}
+                          onChange={e => setAuthUsername(e.target.value)}
+                          placeholder="حروف، أرقام، رموز، أي شيء..."
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                          required
+                        />
+                        <span className="text-[10px] text-slate-500 block">
+                          يمكن كتابة اسم المستخدم بأي أحرف أو أرقام أو رموز
+                        </span>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-300">
+                          كلمة المرور <span className="text-amber-400">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showAuthPassword ? "text" : "password"}
+                            value={authPassword}
+                            onChange={e => setAuthPassword(e.target.value)}
+                            placeholder="حروف أو أرقام أو رموز..."
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white font-mono"
+                            required
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowAuthPassword(!showAuthPassword)}
+                            className="absolute left-2.5 top-2.5 text-slate-400 hover:text-white"
+                          >
+                            {showAuthPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        <span className="text-[10px] text-slate-500 block">
+                          كلمة المرور تقبل أي رموز أو أحرف أو أرقام بدون قيود
+                        </span>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-300">الاسم الكامل (اختياري)</label>
+                        <input
+                          type="text"
+                          value={authFullName}
+                          onChange={e => setAuthFullName(e.target.value)}
+                          placeholder="الاسم ثلاثي أو ثنائي"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-300">رقم الهاتف (اختياري)</label>
+                        <input
+                          type="text"
+                          value={authPhone}
+                          onChange={e => setAuthPhone(e.target.value)}
+                          placeholder="01014955160"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full py-2.5 mt-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all"
+                      >
+                        إنشاء الحساب والتسجيل الآن
+                      </button>
+                    </form>
+                  ) : (
+                    /* Login Form */
+                    <form onSubmit={handleUserLogin} className="space-y-3 text-right">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-300">اسم المستخدم</label>
+                        <input
+                          type="text"
+                          value={authUsername}
+                          onChange={e => setAuthUsername(e.target.value)}
+                          placeholder="اسم المستخدم المسجل..."
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-300">كلمة المرور</label>
+                        <div className="relative">
+                          <input
+                            type={showAuthPassword ? "text" : "password"}
+                            value={authPassword}
+                            onChange={e => setAuthPassword(e.target.value)}
+                            placeholder="كلمة المرور..."
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white font-mono"
+                            required
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowAuthPassword(!showAuthPassword)}
+                            className="absolute left-2.5 top-2.5 text-slate-400 hover:text-white"
+                          >
+                            {showAuthPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full py-2.5 mt-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all"
+                      >
+                        تسجيل الدخول
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
             </motion.div>
           </div>
         )}

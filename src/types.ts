@@ -57,6 +57,29 @@ export interface CartItem {
   selectedColor?: string;
 }
 
+export interface AppCustomer {
+  id: number;
+  username: string;
+  password?: string;
+  full_name: string;
+  phone?: string;
+  is_vip: boolean;
+  purchases_count: number;
+  created_at: string;
+}
+
+export interface PaymentSettings {
+  whatsapp_number: string;
+  instapay_address: string;
+  instapay_phone: string;
+  instapay_recipient_name: string;
+  wallet_phone: string;
+  wallet_recipient_name: string;
+  fawry_code: string;
+  fawry_phone: string;
+  fawry_recipient_name: string;
+}
+
 export interface Coupon {
   id: number;
   coupon_code: string;
