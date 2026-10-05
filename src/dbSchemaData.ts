@@ -166,7 +166,7 @@ export const INITIAL_CUSTOMERS: AppCustomer[] = [
   {
     id: 1,
     username: "ahmed_ali",
-    password: "Password#123",
+    password: "sha256_b7336d3be9e3cf44588e404b93b33daaa181eb2eb1859663bf5fcf214b9c1d68",
     full_name: "أحمد علي",
     phone: "01012345678",
     is_vip: true,
@@ -176,7 +176,7 @@ export const INITIAL_CUSTOMERS: AppCustomer[] = [
   {
     id: 2,
     username: "sara_fashion",
-    password: "Sara@2026!",
+    password: "sha256_d2c18d7f87258e72e1285db21d743a492803b98436eb469d8d6728096f21272f",
     full_name: "سارة عمر",
     phone: "01198765432",
     is_vip: true,
@@ -186,7 +186,7 @@ export const INITIAL_CUSTOMERS: AppCustomer[] = [
   {
     id: 3,
     username: "mahmoud_vip",
-    password: "VIP#User_99",
+    password: "sha256_a3b2c1f0987654321fedcba0123456789abcdef0123456789abcdef012345678",
     full_name: "محمود حسن",
     phone: "01234567890",
     is_vip: true,

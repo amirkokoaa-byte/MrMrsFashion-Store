@@ -7,18 +7,48 @@
 
 /* Custom scrollbar styling for a luxurious tech aesthetic */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #090d16;
+  background: #0f172a;
 }
 ::-webkit-scrollbar-thumb {
-  background: #eab308;
-  border-radius: 4px;
+  background: #f59e0b;
+  border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #ca8a04;
+  background: #d97706;
+}
+
+/* Specific high-visibility scrollbar for checkout modal & cart drawers */
+.bg-white.overflow-y-auto,
+.overflow-y-auto {
+  scrollbar-width: thin;
+  scrollbar-color: #f59e0b #f1f5f9;
+}
+
+.bg-white.overflow-y-auto::-webkit-scrollbar,
+.bg-white .overflow-y-auto::-webkit-scrollbar {
+  width: 9px;
+}
+
+.bg-white.overflow-y-auto::-webkit-scrollbar-track,
+.bg-white .overflow-y-auto::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 6px;
+}
+
+.bg-white.overflow-y-auto::-webkit-scrollbar-thumb,
+.bg-white .overflow-y-auto::-webkit-scrollbar-thumb {
+  background: #f59e0b;
+  border-radius: 6px;
+  border: 2px solid #f1f5f9;
+}
+
+.bg-white.overflow-y-auto::-webkit-scrollbar-thumb:hover,
+.bg-white .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: #d97706;
 }
 
 @keyframes marqueeSlow {

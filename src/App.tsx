@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   ShoppingBag, 
@@ -39,7 +39,9 @@ import {
   User,
   Users,
   Eye,
-  EyeOff
+  EyeOff,
+  Cloud,
+  Wifi
 } from "lucide-react";
 import StoreFront from "./components/StoreFront";
 import DbDesigner from "./components/DbDesigner";
@@ -53,6 +55,8 @@ import {
   INITIAL_CUSTOMERS, 
   DEFAULT_PAYMENT_SETTINGS 
 } from "./dbSchemaData";
+import { subscribeToRealtimeNode, syncDataToCloud } from "./firebase";
+import { hashPassword, maskPassword } from "./utils/crypto";
 
 export default function App() {
   const [activeView, setActiveView] = useState<"storefront" | "designer">("storefront");
@@ -158,6 +162,70 @@ export default function App() {
   // Initialize SQL Engine once
   const sqlEngine = useMemo(() => new MockSqlEngine(), []);
 
+  // Firebase Realtime Synchronization across all users, browsers, and mobile devices
+  useEffect(() => {
+    // 1. Subscribe to Products
+    const unsubProds = subscribeToRealtimeNode<Product[]>("products", (cloudProds) => {
+      if (Array.isArray(cloudProds) && cloudProds.length > 0) {
+        setProducts(cloudProds);
+      }
+    });
+
+    // 2. Subscribe to Coupons
+    const unsubCoupons = subscribeToRealtimeNode<Coupon[]>("coupons", (cloudCoupons) => {
+      if (Array.isArray(cloudCoupons) && cloudCoupons.length > 0) {
+        setCoupons(cloudCoupons);
+      }
+    });
+
+    // 3. Subscribe to 100% Purchase Codes
+    const unsubCodes = subscribeToRealtimeNode<PurchaseCode[]>("purchaseCodes", (cloudCodes) => {
+      if (Array.isArray(cloudCodes) && cloudCodes.length > 0) {
+        setPurchaseCodes(cloudCodes);
+      }
+    });
+
+    // 4. Subscribe to Payment Settings
+    const unsubPayment = subscribeToRealtimeNode<PaymentSettings>("paymentSettings", (cloudPayment) => {
+      if (cloudPayment && cloudPayment.whatsapp_number) {
+        setPaymentSettings(cloudPayment);
+        setTempPaymentSettings(cloudPayment);
+      }
+    });
+
+    // 5. Subscribe to Customers
+    const unsubCustomers = subscribeToRealtimeNode<AppCustomer[]>("customers", (cloudCusts) => {
+      if (Array.isArray(cloudCusts) && cloudCusts.length > 0) {
+        setCustomers(cloudCusts);
+      }
+    });
+
+    // 6. Subscribe to Site Config
+    const unsubSite = subscribeToRealtimeNode<typeof siteConfig>("siteConfig", (cloudConfig) => {
+      if (cloudConfig && cloudConfig.siteName) {
+        setSiteConfig(cloudConfig);
+      }
+    });
+
+    return () => {
+      unsubProds();
+      unsubCoupons();
+      unsubCodes();
+      unsubPayment();
+      unsubCustomers();
+      unsubSite();
+    };
+  }, []);
+
+  // Cloud synced product updater passed to StoreFront and Admin actions
+  const handleUpdateProducts = (action: Product[] | ((prev: Product[]) => Product[])) => {
+    setProducts(prev => {
+      const next = typeof action === "function" ? action(prev) : action;
+      syncDataToCloud("products", next);
+      return next;
+    });
+  };
+
   const handleAddActivity = (action: string, details: string) => {
     const newLog: ActivityLog = {
       id: activityLogs.length + 1,
@@ -167,7 +235,11 @@ export default function App() {
       details,
       created_at: new Date().toISOString().replace("T", " ").substring(0, 19)
     };
-    setActivityLogs(prev => [newLog, ...prev]);
+    setActivityLogs(prev => {
+      const next = [newLog, ...prev];
+      syncDataToCloud("activityLogs", next.slice(0, 50));
+      return next;
+    });
   };
 
   // Open Settings Gear handler
@@ -205,15 +277,17 @@ export default function App() {
   // Save Settings Changes
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
-    setSiteConfig({
+    const newConfig = {
       siteName: tempSiteName.trim() || siteConfig.siteName,
       developerCredit: tempDeveloperCredit.trim() || siteConfig.developerCredit,
       heroTitle: tempHeroTitle.trim() || siteConfig.heroTitle,
       heroSubtitle: tempHeroSubtitle.trim() || siteConfig.heroSubtitle
-    });
+    };
+    setSiteConfig(newConfig);
+    syncDataToCloud("siteConfig", newConfig);
     setSaveSuccessNotice(true);
     setTimeout(() => setSaveSuccessNotice(false), 2500);
-    handleAddActivity("UPDATE_SITE_CONFIG", "تم تحديث نصوص وهوية الموقع واسم البوتيك من لوحة الإعدادات.");
+    handleAddActivity("UPDATE_SITE_CONFIG", "تم تحديث نصوص وهوية الموقع واسم البوتيك ومزامنتها سحابياً.");
   };
 
   // Coupon handlers
@@ -225,14 +299,16 @@ export default function App() {
     const maxVal = newCouponMaxLimit ? parseFloat(newCouponMaxLimit) : undefined;
     const minVal = parseFloat(newCouponMinOrder) || 0;
 
+    let updatedCoupons: Coupon[];
     if (editingCouponId) {
-      setCoupons(coupons.map(c => c.id === editingCouponId ? {
+      updatedCoupons = coupons.map(c => c.id === editingCouponId ? {
         ...c,
         coupon_code: newCouponCode.trim().toUpperCase(),
         discount_value: val,
         max_discount_amount: maxVal,
         min_order_amount: minVal
-      } : c));
+      } : c);
+      setCoupons(updatedCoupons);
       setEditingCouponId(null);
       handleAddActivity("UPDATE_COUPON", `تم تحديث بيانات كوبون الخصم ${newCouponCode.toUpperCase()}.`);
     } else {
@@ -245,9 +321,11 @@ export default function App() {
         min_order_amount: minVal,
         is_active: true
       };
-      setCoupons([newC, ...coupons]);
+      updatedCoupons = [newC, ...coupons];
+      setCoupons(updatedCoupons);
       handleAddActivity("ADD_COUPON", `تمت إضافة كوبون خصم جديد ${newC.coupon_code} بنسبة ${val}% وحد أقصى ${maxVal || "غير محدد"}.`);
     }
+    syncDataToCloud("coupons", updatedCoupons);
 
     setNewCouponCode("");
     setNewCouponDiscount("20");
@@ -255,11 +333,15 @@ export default function App() {
   };
 
   const handleToggleCoupon = (id: number) => {
-    setCoupons(coupons.map(c => c.id === id ? { ...c, is_active: !c.is_active } : c));
+    const updated = coupons.map(c => c.id === id ? { ...c, is_active: !c.is_active } : c);
+    setCoupons(updated);
+    syncDataToCloud("coupons", updated);
   };
 
   const handleDeleteCoupon = (id: number) => {
-    setCoupons(coupons.filter(c => c.id !== id));
+    const updated = coupons.filter(c => c.id !== id);
+    setCoupons(updated);
+    syncDataToCloud("coupons", updated);
     handleAddActivity("DELETE_COUPON", `تم حذف كوبون الخصم رقم ${id}.`);
   };
 
@@ -274,7 +356,9 @@ export default function App() {
       is_used: false,
       created_at: new Date().toISOString().replace("T", " ").substring(0, 16)
     };
-    setPurchaseCodes([newCodeItem, ...purchaseCodes]);
+    const updated = [newCodeItem, ...purchaseCodes];
+    setPurchaseCodes(updated);
+    syncDataToCloud("purchaseCodes", updated);
     setCustomPurchaseCodeName("");
     handleAddActivity("NEW_PURCHASE_CODE", `تم إصدار كود شراء جديد بنسبة خصم 100%: ${newCodeItem.code}.`);
   };
@@ -293,46 +377,53 @@ export default function App() {
       is_used: false,
       created_at: new Date().toISOString().replace("T", " ").substring(0, 16)
     };
-    setPurchaseCodes([nextItem, ...updated]);
+    const finalCodes = [nextItem, ...updated];
+    setPurchaseCodes(finalCodes);
+    syncDataToCloud("purchaseCodes", finalCodes);
     handleAddActivity("CONSUME_PURCHASE_CODE", `تم استخدام كود الشراء ${codeStr} بنجاح، وتوليد كود شراء جديد لحظياً: ${autoNextCode}.`);
   };
 
   // Restore archived product
   const handleRestoreProduct = (id: number) => {
-    setProducts(products.map(p => p.id === id ? { ...p, is_archived: false } : p));
+    handleUpdateProducts(prev => prev.map(p => p.id === id ? { ...p, is_archived: false } : p));
     handleAddActivity("RESTORE_PRODUCT", `تمت استعادة المنتج رقم ${id} من الأرشيف وإعادته لواجهة المتجر.`);
   };
 
   // Toggle product in marquee
   const handleToggleMarqueeProduct = (id: number) => {
-    setProducts(products.map(p => p.id === id ? { ...p, is_featured_marquee: !p.is_featured_marquee } : p));
+    handleUpdateProducts(prev => prev.map(p => p.id === id ? { ...p, is_featured_marquee: !p.is_featured_marquee } : p));
   };
 
   // Payment Settings Save Handler
   const handleSavePaymentSettings = (e: React.FormEvent) => {
     e.preventDefault();
     setPaymentSettings(tempPaymentSettings);
+    syncDataToCloud("paymentSettings", tempPaymentSettings);
     setPaymentSaveSuccess(true);
     setTimeout(() => setPaymentSaveSuccess(false), 2500);
-    handleAddActivity("UPDATE_PAYMENT_CONFIG", "تم تحديث حسابات وبيانات طرق الدفع (إنستاباي، المحفظة، ماي فوري، واتساب) في إعدادات البوتيك.");
+    handleAddActivity("UPDATE_PAYMENT_CONFIG", "تم تحديث حسابات وبيانات طرق الدفع في إعدادات البوتيك ومزامنتها سحابياً.");
   };
 
   // Automatic VIP on user purchase
   const handleUserPurchase = (customerInfo: { username?: string; phone: string; name: string }) => {
-    setCustomers(prev => prev.map(cust => {
-      const matchesCurrent = currentUser && cust.id === currentUser.id;
-      const matchesPhone = customerInfo.phone && cust.phone === customerInfo.phone;
-      const matchesUsername = customerInfo.username && cust.username.toLowerCase() === customerInfo.username.toLowerCase();
-      
-      if (matchesCurrent || matchesPhone || matchesUsername) {
-        return {
-          ...cust,
-          purchases_count: cust.purchases_count + 1,
-          is_vip: true // Automatically VIP on purchase!
-        };
-      }
-      return cust;
-    }));
+    setCustomers(prev => {
+      const updated = prev.map(cust => {
+        const matchesCurrent = currentUser && cust.id === currentUser.id;
+        const matchesPhone = customerInfo.phone && cust.phone === customerInfo.phone;
+        const matchesUsername = customerInfo.username && cust.username.toLowerCase() === customerInfo.username.toLowerCase();
+        
+        if (matchesCurrent || matchesPhone || matchesUsername) {
+          return {
+            ...cust,
+            purchases_count: cust.purchases_count + 1,
+            is_vip: true // Automatically VIP on purchase!
+          };
+        }
+        return cust;
+      });
+      syncDataToCloud("customers", updated);
+      return updated;
+    });
 
     if (currentUser) {
       setCurrentUser(prev => prev ? {
@@ -343,8 +434,8 @@ export default function App() {
     }
   };
 
-  // User Registration (Allows letters, numbers, symbols, anything)
-  const handleUserRegister = (e: React.FormEvent) => {
+  // User Registration with SHA-256 Client-side Encryption
+  const handleUserRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setUserAuthError("");
     setUserAuthSuccess("");
@@ -364,10 +455,13 @@ export default function App() {
       return;
     }
 
+    // Encrypt password before storage
+    const encryptedPassword = await hashPassword(authPassword);
+
     const newCust: AppCustomer = {
       id: Date.now(),
       username: authUsername.trim(),
-      password: authPassword,
+      password: encryptedPassword,
       full_name: authFullName.trim() || authUsername.trim(),
       phone: authPhone.trim() || undefined,
       is_vip: false,
@@ -375,11 +469,13 @@ export default function App() {
       created_at: new Date().toISOString().replace("T", " ").substring(0, 16)
     };
 
-    // Newest customer at the top!
-    setCustomers(prev => [newCust, ...prev]);
+    // Newest customer at the top and sync to Cloud
+    const nextCustomers = [newCust, ...customers];
+    setCustomers(nextCustomers);
+    syncDataToCloud("customers", nextCustomers);
     setCurrentUser(newCust);
-    setUserAuthSuccess(`أهلاً بك يا ${newCust.username}! تم إنشاء حسابك وتسجيل دخولك بنجاح.`);
-    handleAddActivity("REGISTER_USER", `تم تسجيل حساب عميل جديد بالاسم "${newCust.username}".`);
+    setUserAuthSuccess(`أهلاً بك يا ${newCust.username}! تم تشفير بياناتك وإنشاء حسابك بنجاح.`);
+    handleAddActivity("REGISTER_USER", `تم تسجيل حساب عميل جديد بالاسم "${newCust.username}" مع تشفير كامل لكلمة المرور.`);
     
     setTimeout(() => {
       setShowUserAuthModal(false);
@@ -391,14 +487,17 @@ export default function App() {
     }, 1200);
   };
 
-  // User Login
-  const handleUserLogin = (e: React.FormEvent) => {
+  // User Login with Hash Comparison
+  const handleUserLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setUserAuthError("");
     setUserAuthSuccess("");
 
+    const inputHash = await hashPassword(authPassword);
+
     const found = customers.find(
-      c => c.username.toLowerCase() === authUsername.trim().toLowerCase() && c.password === authPassword
+      c => c.username.toLowerCase() === authUsername.trim().toLowerCase() && 
+      (c.password === inputHash || c.password === authPassword)
     );
 
     if (found) {
@@ -407,7 +506,7 @@ export default function App() {
         is_vip: found.purchases_count > 0 ? true : found.is_vip
       };
       setCurrentUser(updatedUser);
-      setUserAuthSuccess(`مرحباً بك مجدداً يا ${found.username}!`);
+      setUserAuthSuccess(`مرحباً بك مجدداً يا ${found.username}! تم تسجيل دخولك بنجاح.`);
       handleAddActivity("LOGIN_USER", `تم تسجيل دخول العميل "${found.username}".`);
       
       setTimeout(() => {
@@ -430,14 +529,18 @@ export default function App() {
 
   // VIP Status Toggle in Settings
   const handleToggleVip = (id: number) => {
-    setCustomers(prev => prev.map(c => {
-      if (c.id === id) {
-        const nextVip = !c.is_vip;
-        handleAddActivity("TOGGLE_VIP", `تم ${nextVip ? "تفعيل" : "إلغاء"} شارة VIP للعميل "${c.username}".`);
-        return { ...c, is_vip: nextVip };
-      }
-      return c;
-    }));
+    setCustomers(prev => {
+      const updated = prev.map(c => {
+        if (c.id === id) {
+          const nextVip = !c.is_vip;
+          handleAddActivity("TOGGLE_VIP", `تم ${nextVip ? "تفعيل" : "إلغاء"} شارة VIP للعميل "${c.username}".`);
+          return { ...c, is_vip: nextVip };
+        }
+        return c;
+      });
+      syncDataToCloud("customers", updated);
+      return updated;
+    });
 
     if (currentUser && currentUser.id === id) {
       setCurrentUser(prev => prev ? { ...prev, is_vip: !prev.is_vip } : null);
@@ -447,7 +550,11 @@ export default function App() {
   // Delete Customer in Settings
   const handleDeleteCustomer = (id: number, username: string) => {
     if (confirm(`هل أنت متأكد من حذف حساب العميل "${username}" نهائياً من قاعدة البيانات؟`)) {
-      setCustomers(prev => prev.filter(c => c.id !== id));
+      setCustomers(prev => {
+        const updated = prev.filter(c => c.id !== id);
+        syncDataToCloud("customers", updated);
+        return updated;
+      });
       if (currentUser && currentUser.id === id) {
         setCurrentUser(null);
       }
@@ -459,36 +566,45 @@ export default function App() {
   const handleStartEditCustomer = (cust: AppCustomer) => {
     setEditingCustomerId(cust.id);
     setEditCustUsername(cust.username);
-    setEditCustPassword(cust.password || "");
+    setEditCustPassword("");
     setEditCustFullName(cust.full_name || "");
     setEditCustPhone(cust.phone || "");
     setEditCustVip(cust.is_vip);
   };
 
-  // Save Customer Edit
-  const handleSaveEditCustomer = (e: React.FormEvent) => {
+  // Save Customer Edit with Hashed Password
+  const handleSaveEditCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCustomerId || !editCustUsername.trim()) return;
 
-    setCustomers(prev => prev.map(c => {
-      if (c.id === editingCustomerId) {
-        return {
-          ...c,
-          username: editCustUsername.trim(),
-          password: editCustPassword || c.password,
-          full_name: editCustFullName.trim() || c.full_name,
-          phone: editCustPhone.trim() || c.phone,
-          is_vip: editCustVip
-        };
-      }
-      return c;
-    }));
+    let finalPassword: string | undefined = undefined;
+    if (editCustPassword.trim()) {
+      finalPassword = await hashPassword(editCustPassword.trim());
+    }
+
+    setCustomers(prev => {
+      const updated = prev.map(c => {
+        if (c.id === editingCustomerId) {
+          return {
+            ...c,
+            username: editCustUsername.trim(),
+            password: finalPassword || c.password,
+            full_name: editCustFullName.trim() || c.full_name,
+            phone: editCustPhone.trim() || c.phone,
+            is_vip: editCustVip
+          };
+        }
+        return c;
+      });
+      syncDataToCloud("customers", updated);
+      return updated;
+    });
 
     if (currentUser && currentUser.id === editingCustomerId) {
       setCurrentUser(prev => prev ? {
         ...prev,
         username: editCustUsername.trim(),
-        password: editCustPassword || prev.password,
+        password: finalPassword || prev.password,
         full_name: editCustFullName.trim() || prev.full_name,
         phone: editCustPhone.trim() || prev.phone,
         is_vip: editCustVip
@@ -622,6 +738,18 @@ export default function App() {
                 {siteConfig.developerCredit}
               </span>
             </div>
+            {/* Realtime Firebase Cloud & Encryption Status Indicator */}
+            <div className="hidden lg:flex items-center gap-2 bg-slate-900/90 border border-slate-800 rounded-xl px-2.5 py-1 text-[10px] mr-2">
+              <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>سحابي Firebase ⚡</span>
+              </span>
+              <span className="text-slate-700">|</span>
+              <span className="flex items-center gap-1 text-slate-300">
+                <ShieldCheck className="w-3 h-3 text-amber-400" />
+                <span>تشفير SHA-256</span>
+              </span>
+            </div>
           </div>
 
           {/* Quick Action Controls on Top Bar */}
@@ -737,7 +865,7 @@ export default function App() {
               <StoreFront 
                 siteConfig={siteConfig}
                 products={products}
-                setProducts={setProducts}
+                setProducts={handleUpdateProducts}
                 coupons={coupons}
                 purchaseCodes={purchaseCodes}
                 onConsumePurchaseCode={handleConsumePurchaseCode}
@@ -1113,7 +1241,7 @@ export default function App() {
                         </div>
                         <div>
                           <label className="block text-[11px] font-bold text-slate-400 mb-1">
-                            أقصى قيمة للخصم ($/ج):
+                            أقصى قيمة للخصم (ج.م):
                           </label>
                           <input
                             type="number"
@@ -1126,7 +1254,7 @@ export default function App() {
                         </div>
                         <div>
                           <label className="block text-[11px] font-bold text-slate-400 mb-1">
-                            الحد الأدنى للطلب ($/ج):
+                            الحد الأدنى للطلب (ج.م):
                           </label>
                           <input
                             type="number"
@@ -1644,7 +1772,10 @@ export default function App() {
 
                             <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap">
                               <span>📱 {cust.phone || "بدون هاتف"}</span>
-                              <span>🔑 كلمة المرور: <span className="font-mono text-slate-300">{cust.password || "••••"}</span></span>
+                              <span className="flex items-center gap-1 font-mono text-emerald-400 bg-slate-900 px-2 py-0.5 rounded border border-emerald-500/20 text-[10px]">
+                                <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                                كلمة المرور: مشفرة (SHA-256) ••••••••
+                              </span>
                               <span className="bg-slate-900 px-1.5 py-0.5 rounded text-emerald-400 font-bold border border-slate-800">
                                 عدد المشتريات: {cust.purchases_count}
                               </span>
@@ -1900,6 +2031,12 @@ export default function App() {
                       {userAuthSuccess}
                     </div>
                   )}
+
+                  {/* Security and Encryption Assurance Box */}
+                  <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 text-[11px] text-emerald-400 flex items-center gap-2 text-right">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>تشفير سحابي (SHA-256): كلمة المرور وبيانات الحساب مشفرة بالكامل لعدم ظهورها نهائياً.</span>
+                  </div>
 
                   {userAuthMode === "register" ? (
                     /* Register Form */

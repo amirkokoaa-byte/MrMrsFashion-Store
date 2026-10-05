@@ -34,10 +34,15 @@ import {
   Smartphone,
   Send,
   Receipt,
-  UserCheck
+  UserCheck,
+  Calendar,
+  Clock,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
-import { Product, Category, CartItem, Coupon, ActivityLog, Review, PurchaseCode, AppCustomer, PaymentSettings } from "../types";
-import { SAMPLE_CATEGORIES, INITIAL_PRODUCT_REVIEWS } from "../dbSchemaData";
+import { Product, Category, CartItem, Coupon, ActivityLog, Review, PurchaseCode, AppCustomer, PaymentSettings, CompletedOrder } from "../types";
+import { SAMPLE_CATEGORIES, INITIAL_PRODUCT_REVIEWS, SAMPLE_PRODUCTS } from "../dbSchemaData";
+import { subscribeToRealtimeNode, syncDataToCloud } from "../firebase";
 
 interface StoreFrontProps {
   siteConfig: {
@@ -117,6 +122,9 @@ export default function StoreFront({
   const [selectedSize, setSelectedSize] = useState("");
   const [selectedColor, setSelectedColor] = useState("");
 
+  // Available standard selectable sizes
+  const AVAILABLE_SIZES = ["XS", "S", "M", "L", "XL"];
+
   // Admin Editing Product States
   const [isEditingProduct, setIsEditingProduct] = useState(false);
   const [editName, setEditName] = useState("");
@@ -131,7 +139,15 @@ export default function StoreFront({
   const [editSpecifications, setEditSpecifications] = useState("");
   const [editColors, setEditColors] = useState("");
   const [editSizes, setEditSizes] = useState("");
+  const [editSizesList, setEditSizesList] = useState<string[]>(["S", "M", "L", "XL"]);
   const [editSuccessNotice, setEditSuccessNotice] = useState(false);
+
+  // Toggle size in edit modal
+  const toggleEditSize = (sz: string) => {
+    setEditSizesList(prev => 
+      prev.includes(sz) ? prev.filter(s => s !== sz) : [...prev, sz]
+    );
+  };
 
   // Checkout States
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -147,6 +163,62 @@ export default function StoreFront({
   const [shippingMethod, setShippingMethod] = useState("Aramex Express");
   const [paymentMethod, setPaymentMethod] = useState<"wallet" | "instapay" | "fawry" | "cod">("wallet");
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Purchase Code input in Payment Step (100% Discount direct purchase)
+  const [paymentPurchaseCodeInput, setPaymentPurchaseCodeInput] = useState("");
+  const [paymentPurchaseCodeMsg, setPaymentPurchaseCodeMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Order History in Cart state (Past Purchases)
+  const [orderHistory, setOrderHistory] = useState<CompletedOrder[]>(() => {
+    const now = new Date();
+    const arabicDays = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+    return [
+      {
+        id: "ord-sample-1",
+        orderNumber: "ORD-2026-9184",
+        items: [
+          {
+            id: 101,
+            product: SAMPLE_PRODUCTS[0],
+            quantity: 1,
+            selectedSize: "L",
+            selectedColor: "كحلي داكن"
+          }
+        ],
+        subtotal: SAMPLE_PRODUCTS[0].price,
+        discount: 0,
+        grandTotal: SAMPLE_PRODUCTS[0].price,
+        paymentMethod: "instapay",
+        paymentMethodDisplay: "إنستاباي InstaPay (تحويل فوري)",
+        shippingMethod: "Aramex Express",
+        dayName: arabicDays[(now.getDay() + 6) % 7],
+        time: "03:45 مساءً",
+        date: new Date(Date.now() - 86400000).toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" }),
+        timestamp: Date.now() - 86400000
+      }
+    ];
+  });
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>("ord-sample-1");
+
+  // Firebase Realtime Subscription for Reviews & Order History
+  useEffect(() => {
+    const unsubOrders = subscribeToRealtimeNode<CompletedOrder[]>("orderHistory", (cloudOrders) => {
+      if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
+        setOrderHistory(cloudOrders);
+      }
+    });
+
+    const unsubReviews = subscribeToRealtimeNode<Review[]>("reviews", (cloudReviews) => {
+      if (Array.isArray(cloudReviews)) {
+        setReviews(cloudReviews);
+      }
+    });
+
+    return () => {
+      unsubOrders();
+      unsubReviews();
+    };
+  }, []);
 
   // Autofill name and phone if customer is logged in
   useEffect(() => {
@@ -194,6 +266,14 @@ export default function StoreFront({
   const [newProdSpecifications, setNewProdSpecifications] = useState("");
   const [newProdColors, setNewProdColors] = useState("أسود ملكي، كحلي داكن");
   const [newProdSizes, setNewProdSizes] = useState("S, M, L, XL");
+  const [newProdSizesList, setNewProdSizesList] = useState<string[]>(["S", "M", "L", "XL"]);
+
+  // Toggle size in add product modal
+  const toggleNewProdSize = (sz: string) => {
+    setNewProdSizesList(prev => 
+      prev.includes(sz) ? prev.filter(s => s !== sz) : [...prev, sz]
+    );
+  };
 
   // Sync external add product trigger from top bar
   useEffect(() => {
@@ -307,7 +387,7 @@ export default function StoreFront({
 
     const currentSubtotal = cart.reduce((acc, curr) => acc + (curr.product.price * curr.quantity), 0);
     if (currentSubtotal < coupon.min_order_amount) {
-      setCouponError(`هذا الكوبون يتطلب حداً أدنى للشراء يبلغ $${coupon.min_order_amount}`);
+      setCouponError(`هذا الكوبون يتطلب حداً أدنى للشراء يبلغ ${coupon.min_order_amount} ج.م`);
       return;
     }
 
@@ -324,12 +404,12 @@ export default function StoreFront({
   if (appliedPurchaseCode) {
     // 100% single-use discount
     discount = subtotal;
-    discountNotice = "كود شراء VIP (خصم 100% مجاناً)";
+    discountNotice = "كود خصم 100% للعميل (مجاناً بالكامل)";
   } else if (appliedCoupon) {
     const rawDiscount = (subtotal * appliedCoupon.discount_value) / 100;
     if (appliedCoupon.max_discount_amount && rawDiscount > appliedCoupon.max_discount_amount) {
       discount = appliedCoupon.max_discount_amount;
-      discountNotice = `خصم ${appliedCoupon.discount_value}% (تطبيق الحد الأقصى ${appliedCoupon.max_discount_amount}$)`;
+      discountNotice = `خصم ${appliedCoupon.discount_value}% (تطبيق الحد الأقصى ${appliedCoupon.max_discount_amount} ج.م)`;
     } else {
       discount = rawDiscount;
       discountNotice = `خصم ${appliedCoupon.discount_value}%`;
@@ -345,11 +425,11 @@ export default function StoreFront({
   const getPaymentMethodDisplay = () => {
     switch (paymentMethod) {
       case "instapay":
-        return `إنستاباي InstaPay (المستلم: ${paymentSettings.instapay_recipient_name || "بوتيك الأناقة"})`;
+        return `إنستاباي InstaPay (المستلم: ${paymentSettings.instapay_recipient_name || "أحمد كامل"})`;
       case "wallet":
-        return `محفظة إلكترونية كاش (المستلم: ${paymentSettings.wallet_recipient_name || "بوتيك الأناقة"})`;
+        return `محفظة إلكترونية كاش (المستلم: ${paymentSettings.wallet_recipient_name || "أحمد كامل"})`;
       case "fawry":
-        return `ماي فوري MyFawry (المستلم: ${paymentSettings.fawry_recipient_name || "بوتيك الأناقة"})`;
+        return `ماي فوري MyFawry (المستلم: ${paymentSettings.fawry_recipient_name || "أحمد كامل"})`;
       default:
         return "الدفع عند الاستلام";
     }
@@ -357,13 +437,13 @@ export default function StoreFront({
 
   // WhatsApp order link generator with pre-filled message
   const getWhatsAppUrl = () => {
-    const itemsList = cart.map((item, idx) => `• [${idx + 1}] ${item.product.product_name} (${item.quantity}×) ${item.selectedSize ? `مقاس ${item.selectedSize}` : ''} - بسعر: $${(item.product.price * item.quantity).toFixed(2)}`).join("\n");
+    const itemsList = cart.map((item, idx) => `• [${idx + 1}] ${item.product.product_name} (${item.quantity}×) ${item.selectedSize ? `مقاس ${item.selectedSize}` : ''} - بسعر: ${(item.product.price * item.quantity).toFixed(2)} ج.م`).join("\n");
     
     const msg = `مرحباً بوتيك الأناقة 👋
 أرغب في إتمام وتأكيد طلبي:
 ${itemsList}
 
-💰 المبلغ الإجمالي الصافي: $${grandTotal.toFixed(2)}
+💰 المبلغ الإجمالي الصافي: ${grandTotal.toFixed(2)} ج.م
 💳 طريقة التحويل المحددة: ${getPaymentMethodDisplay()}
 👤 اسم العميل: ${firstName} ${lastName}
 📱 رقم الهاتف: ${phone}
@@ -376,6 +456,116 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
     const rawNumber = (paymentSettings.whatsapp_number || "01014955160").replace(/[^0-9]/g, "");
     const formatted = rawNumber.startsWith("20") ? rawNumber : (rawNumber.startsWith("0") ? `20${rawNumber.substring(1)}` : `20${rawNumber}`);
     return `https://wa.me/${formatted}?text=${encodeURIComponent(msg)}`;
+  };
+
+  // Direct purchase code application in Payment Step
+  const handleApplyPaymentPurchaseCode = () => {
+    const cleaned = paymentPurchaseCodeInput.trim().toUpperCase();
+    if (!cleaned) {
+      setPaymentPurchaseCodeMsg({ type: "error", text: "يرجى إدخال كود الشراء أولاً." });
+      return;
+    }
+
+    const found = purchaseCodes.find(pc => pc.code.toUpperCase() === cleaned && !pc.is_used);
+    if (!found) {
+      setPaymentPurchaseCodeMsg({ type: "error", text: "كود الشراء غير صحيح أو تم استخدامه مسبقاً." });
+      return;
+    }
+
+    // Success message for 100% discount purchase
+    setPaymentPurchaseCodeMsg({ 
+      type: "success", 
+      text: "تم الشراء بنجاح! تم استخدام كود الشراء (خصم 100%) وتأكيد طلبك مجاناً بالكامل!" 
+    });
+
+    const now = new Date();
+    const arabicDays = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+    const orderNumber = `ORD-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const newOrderRecord: CompletedOrder = {
+      id: `ord-${Date.now()}`,
+      orderNumber,
+      items: [...cart],
+      subtotal,
+      discount: subtotal,
+      grandTotal: 0,
+      paymentMethod: "purchase_code",
+      paymentMethodDisplay: `كود الشراء المجاني (${found.code}) - خصم 100%`,
+      shippingMethod,
+      dayName: arabicDays[now.getDay()],
+      time: now.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit", hour12: true }),
+      date: now.toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" }),
+      timestamp: Date.now(),
+      usedPurchaseCode: found.code
+    };
+
+    // Prepend to order history in cart & sync to Firebase Cloud
+    setOrderHistory(prev => {
+      const next = [newOrderRecord, ...prev];
+      syncDataToCloud("orderHistory", next);
+      return next;
+    });
+    setExpandedOrderId(newOrderRecord.id);
+
+    // Consume purchase code
+    onConsumePurchaseCode(found.code);
+
+    onSimulateOrderCreation({
+      customerName: `${firstName} ${lastName}`,
+      phone,
+      address: `${addressLine}, ${city}, ${country}`,
+      city,
+      country,
+      items: cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, price: item.product.price })),
+      total: subtotal,
+      discount: subtotal,
+      net: 0,
+      coupon_code: found.code,
+      payment_method: "كود الشراء (خصم 100%)",
+      shipping_method: shippingMethod
+    });
+
+    onUserPurchase({
+      username: currentUser?.username,
+      phone,
+      name: `${firstName} ${lastName}`
+    });
+
+    onAddActivity("APPLY_PURCHASE_CODE_PAYMENT", `تم الشراء بنجاح عبر كود الشراء 100% (${found.code}) للطلب ${orderNumber}.`);
+
+    // Deduct stock
+    const updatedProducts = products.map(p => {
+      const cartItemsForProduct = cart.filter(item => item.product.id === p.id);
+      if (cartItemsForProduct.length > 0) {
+        const totalQtySubtracted = cartItemsForProduct.reduce((acc, curr) => acc + curr.quantity, 0);
+        return { ...p, stock: Math.max(0, p.stock - totalQtySubtracted) };
+      }
+      return p;
+    });
+    setProducts(updatedProducts);
+
+    setLastOrderDetails({
+      orderNumber,
+      customerName: `${firstName} ${lastName}`,
+      phone,
+      address: `${addressLine}, ${city}, ${stateName}, ${country}`,
+      subtotal,
+      discount: subtotal,
+      tax: 0,
+      shippingCost: 0,
+      grandTotal: 0,
+      paymentMethod: `كود الشراء (خصم 100% مجاناً)`,
+      shippingMethod,
+      items: [...cart],
+      usedPurchaseCode: found.code
+    });
+
+    // Clear cart so previous and new orders appear in cart history!
+    setCart([]);
+    setAppliedCoupon(null);
+    setAppliedPurchaseCode(null);
+    setCouponCode("");
+    setCheckoutStep("success");
   };
 
   // Checkout process completion
@@ -415,6 +605,33 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
       onConsumePurchaseCode(appliedPurchaseCode.code);
     }
 
+    // Record to order history
+    const now = new Date();
+    const arabicDays = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+    const newOrderRecord: CompletedOrder = {
+      id: `ord-${Date.now()}`,
+      orderNumber,
+      items: [...cart],
+      subtotal,
+      discount,
+      grandTotal,
+      paymentMethod,
+      paymentMethodDisplay: getPaymentMethodDisplay(),
+      shippingMethod,
+      dayName: arabicDays[now.getDay()],
+      time: now.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit", hour12: true }),
+      date: now.toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" }),
+      timestamp: Date.now(),
+      usedPurchaseCode: appliedPurchaseCode?.code,
+      usedCouponCode: appliedCoupon?.coupon_code
+    };
+    setOrderHistory(prev => {
+      const next = [newOrderRecord, ...prev];
+      syncDataToCloud("orderHistory", next);
+      return next;
+    });
+    setExpandedOrderId(newOrderRecord.id);
+
     // Update local products stock state
     const updatedProducts = products.map(p => {
       const cartItemsForProduct = cart.filter(item => item.product.id === p.id);
@@ -436,7 +653,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
       tax: appliedPurchaseCode ? 0 : tax,
       shippingCost: appliedPurchaseCode ? 0 : shippingCost,
       grandTotal,
-      paymentMethod,
+      paymentMethod: getPaymentMethodDisplay(),
       shippingMethod,
       items: [...cart],
       usedPurchaseCode: appliedPurchaseCode?.code
@@ -465,6 +682,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
     setEditSpecifications(prod.specifications || "");
     setEditColors(prod.colors.join("، "));
     setEditSizes(prod.sizes.join("، "));
+    setEditSizesList(prod.sizes && prod.sizes.length > 0 ? prod.sizes : ["S", "M", "L", "XL"]);
     setIsEditingProduct(true);
   };
 
@@ -482,7 +700,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
 
     const cat = SAMPLE_CATEGORIES.find(c => c.id === editCategoryId) || SAMPLE_CATEGORIES[0];
     const colorsArr = editColors.split(/[،,]+/).map(s => s.trim()).filter(Boolean);
-    const sizesArr = editSizes.split(/[،,]+/).map(s => s.trim()).filter(Boolean);
+    const sizesArr = editSizesList.length > 0 ? editSizesList : (editSizes.split(/[،,]+/).map(s => s.trim()).filter(Boolean));
 
     const updated: Product = {
       ...selectedProduct,
@@ -543,6 +761,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
 
     const nextReviews = [newReviewItem, ...reviews];
     setReviews(nextReviews);
+    syncDataToCloud("reviews", nextReviews);
 
     // Increment review count and update average rating in state
     const productReviewsForThis = nextReviews.filter(r => r.product_id === prodId);
@@ -595,7 +814,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
 
     const stockNum = parseInt(newProdStock) || 10;
     const colorsArr = newProdColors.split(/[,،]+/).map(s => s.trim()).filter(Boolean);
-    const sizesArr = newProdSizes.split(/[,،]+/).map(s => s.trim()).filter(Boolean);
+    const sizesArr = newProdSizesList.length > 0 ? newProdSizesList : ["S", "M", "L", "XL"];
     const defaultImg = newProdImageUrl.trim() || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=600";
 
     const createdProduct: Product = {
@@ -756,11 +975,11 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                         </span>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-xs font-black text-amber-400">
-                            ${item.price.toFixed(2)}
+                            {item.price.toFixed(2)} ج.م
                           </span>
                           {item.compare_at_price && (
                             <span className="text-[10px] text-slate-500 line-through">
-                              ${item.compare_at_price.toFixed(2)}
+                              {item.compare_at_price.toFixed(2)} ج.م
                             </span>
                           )}
                         </div>
@@ -929,9 +1148,9 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                   </p>
 
                   <div className="flex items-baseline gap-2 pt-2">
-                    <span className="text-2xl font-extrabold text-slate-900">${product.price.toFixed(2)}</span>
+                    <span className="text-2xl font-extrabold text-slate-900">{product.price.toFixed(2)} ج.م</span>
                     {product.compare_at_price && (
-                      <span className="text-sm text-slate-400 line-through">${product.compare_at_price.toFixed(2)}</span>
+                      <span className="text-sm text-slate-400 line-through">{product.compare_at_price.toFixed(2)} ج.م</span>
                     )}
                   </div>
 
@@ -977,16 +1196,29 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
               exit={{ scale: 0.95, opacity: 0 }}
               className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl relative"
             >
-              {/* Close Button */}
-              <button 
-                onClick={() => {
-                  setSelectedProduct(null);
-                  setIsEditingProduct(false);
-                }}
-                className="absolute top-4 left-4 p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-950 transition-all z-20"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              {/* Product Modal Top Actions: Delete Product & Close Button */}
+              <div className="absolute top-4 left-4 flex items-center gap-2 z-30">
+                <button 
+                  type="button"
+                  onClick={() => handleDeleteProduct(selectedProduct.id)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md hover:shadow-lg transition-all cursor-pointer"
+                  title="حذف هذا المنتج نهائياً من المتجر"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>حذف المنتج</span>
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setSelectedProduct(null);
+                    setIsEditingProduct(false);
+                  }}
+                  className="p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-950 transition-all cursor-pointer shadow-xs"
+                  title="إغلاق النافذة"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
               {/* Admin Top Actions Bar if logged in with 0000 */}
               {isAdmin && (
@@ -1068,7 +1300,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
 
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-slate-700">السعر ($): *</label>
+                      <label className="block text-xs font-bold text-slate-700">السعر (ج.م): *</label>
                       <input
                         type="number"
                         step="0.01"
@@ -1079,7 +1311,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-slate-700">قبل الخصم ($):</label>
+                      <label className="block text-xs font-bold text-slate-700">قبل الخصم (ج.م):</label>
                       <input
                         type="number"
                         step="0.01"
@@ -1163,14 +1395,35 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                         className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
                       />
                     </div>
+                    {/* Sizes Selection Boxes (XS, S, M, L, XL) */}
                     <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-slate-700">المقاسات (مفصولة بفاصلة):</label>
-                      <input
-                        type="text"
-                        value={editSizes}
-                        onChange={(e) => setEditSizes(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                      />
+                      <label className="block text-xs font-bold text-slate-700">
+                        المقاسات المتوفرة (حدد الخانات المطلوبة): *
+                      </label>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {AVAILABLE_SIZES.map(size => {
+                          const isSelected = editSizesList.includes(size);
+                          return (
+                            <button
+                              key={size}
+                              type="button"
+                              onClick={() => toggleEditSize(size)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border-2 transition-all cursor-pointer ${
+                                isSelected
+                                  ? "border-amber-500 bg-amber-50 text-amber-950 shadow-xs"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                              }`}
+                            >
+                              <div className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[9px] border ${
+                                isSelected ? "bg-amber-500 text-slate-950 border-amber-500 font-black" : "border-slate-300 bg-white"
+                              }`}>
+                                {isSelected && "✓"}
+                              </div>
+                              <span>{size}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
 
@@ -1245,11 +1498,11 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                       <span className="text-slate-400 text-xs">({selectedProduct.reviews_count} تقييم مسجل)</span>
                     </div>
 
-                    {/* Price */}
+                    {/* Price in Egyptian Pound */}
                     <div className="flex items-baseline gap-3 border-y border-slate-100 py-4 flex-wrap">
-                      <span className="text-3xl font-black text-slate-950">${selectedProduct.price.toFixed(2)}</span>
+                      <span className="text-3xl font-black text-slate-950">{selectedProduct.price.toFixed(2)} ج.م</span>
                       {selectedProduct.compare_at_price && (
-                        <span className="text-sm text-slate-400 line-through">${selectedProduct.compare_at_price.toFixed(2)}</span>
+                        <span className="text-sm text-slate-400 line-through">{selectedProduct.compare_at_price.toFixed(2)} ج.م</span>
                       )}
                       {(selectedProduct.discount_percentage || (selectedProduct.compare_at_price && selectedProduct.compare_at_price > selectedProduct.price)) && (
                         <span className="bg-red-600 text-white text-xs font-black px-2.5 py-1 rounded-lg">
@@ -1298,15 +1551,16 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                   {/* Size Selection */}
                   {selectedProduct.sizes.length > 0 && selectedProduct.sizes[0] !== "One Size" && selectedProduct.sizes[0] !== "Standard" && (
                     <div className="space-y-2">
-                      <span className="block text-xs font-bold text-slate-400">المقاسات المتوفرة:</span>
-                      <div className="flex gap-2">
+                      <span className="block text-xs font-bold text-slate-700">المقاسات المتوفرة (اختر مقاسك):</span>
+                      <div className="flex flex-wrap gap-2">
                         {selectedProduct.sizes.map(size => (
                           <button
                             key={size}
+                            type="button"
                             onClick={() => setSelectedSize(size)}
-                            className={`h-10 w-10 rounded-xl border flex items-center justify-center text-xs font-bold transition-all ${
+                            className={`h-10 min-w-10 px-3.5 rounded-xl border flex items-center justify-center text-xs font-bold transition-all cursor-pointer ${
                               selectedSize === size || (!selectedSize && selectedProduct.sizes[0] === size)
-                                ? "border-amber-500 bg-amber-50 text-amber-900" 
+                                ? "border-amber-500 bg-amber-50 text-amber-950 ring-2 ring-amber-500/40 font-black shadow-xs" 
                                 : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                             }`}
                           >
@@ -1485,14 +1739,147 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                 </h3>
               </div>
 
-              {/* Items List */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* Items List or Past Purchases */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
                 {cart.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-64 text-slate-400 space-y-4">
-                    <ShoppingBag className="w-16 h-16 stroke-1 text-slate-300" />
-                    <p className="text-sm">سلتك لا تزال فارغة حالياً.</p>
-                  </div>
+                  orderHistory.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-slate-400 space-y-4">
+                      <ShoppingBag className="w-16 h-16 stroke-1 text-slate-300" />
+                      <p className="text-sm font-semibold">سلتك لا تزال فارغة حالياً.</p>
+                      <p className="text-xs text-slate-400">تصفح تشكيلة البوتيك وأضف منتجاتك المفضلة!</p>
+                    </div>
+                  ) : (
+                    /* Previous Orders / Past Purchases History in Cart */
+                    <div className="space-y-4 text-right">
+                      <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
+                        <div className="flex items-center gap-2">
+                          <Receipt className="w-4 h-4 text-amber-500" />
+                          <h4 className="font-extrabold text-slate-900 text-sm">
+                            سجل الطلبات والمشتريات السابقة ({orderHistory.length})
+                          </h4>
+                        </div>
+                        <span className="text-[10px] bg-amber-500/20 text-amber-900 font-bold px-2 py-0.5 rounded-full">
+                          الطلبات المحفوظة
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        اضغط على أي طلب سابق لعرض تفاصيل الطلب، طريقة الدفع، واليوم والساعة والتاريخ:
+                      </p>
+
+                      <div className="space-y-3">
+                        {orderHistory.map((order) => {
+                          const isExpanded = expandedOrderId === order.id;
+                          return (
+                            <div 
+                              key={order.id}
+                              className={`border rounded-2xl transition-all overflow-hidden ${
+                                isExpanded 
+                                  ? "border-amber-500 bg-amber-50/20 ring-1 ring-amber-500/40 shadow-xs" 
+                                  : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-xs"
+                              }`}
+                            >
+                              {/* Order Card Summary / Click Header */}
+                              <button
+                                type="button"
+                                onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
+                                className="w-full p-3.5 flex items-center justify-between text-right cursor-pointer"
+                              >
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono text-xs font-black text-amber-600">
+                                      {order.orderNumber}
+                                    </span>
+                                    <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-semibold">
+                                      {order.dayName}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                                    <span>{order.date}</span>
+                                    <span>•</span>
+                                    <span>{order.time}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <div className="text-left">
+                                    <span className="block font-black text-xs sm:text-sm text-slate-950">
+                                      {order.grandTotal === 0 ? "مجاني (100%)" : `${order.grandTotal.toFixed(2)} ج.م`}
+                                    </span>
+                                    <span className="text-[10px] text-emerald-600 font-bold">مكتمل ✓</span>
+                                  </div>
+                                  {isExpanded ? (
+                                    <ChevronUp className="w-4 h-4 text-amber-600 shrink-0" />
+                                  ) : (
+                                    <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                                  )}
+                                </div>
+                              </button>
+
+                              {/* Expanded Order Details */}
+                              {isExpanded && (
+                                <div className="p-3.5 pt-0 border-t border-slate-200/60 space-y-3 mt-1 text-xs">
+                                  {/* 1. Purchased Items (الطلب) */}
+                                  <div className="space-y-2 pt-2">
+                                    <span className="block text-[11px] font-bold text-slate-700">
+                                      محتويات الطلب:
+                                    </span>
+                                    <div className="space-y-1.5">
+                                      {order.items.map((item, idx) => (
+                                        <div key={idx} className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200/80">
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
+                                              <img src={item.product.image_url} alt="" className="w-full h-full object-cover" />
+                                            </div>
+                                            <div className="text-right">
+                                              <span className="block font-bold text-slate-900 text-xs line-clamp-1">{item.product.product_name}</span>
+                                              <span className="text-[10px] text-slate-500">
+                                                الكمية: {item.quantity} {item.selectedSize ? `• مقاس: ${item.selectedSize}` : ""}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <span className="font-bold text-slate-900 text-xs font-mono">
+                                            {(item.product.price * item.quantity).toFixed(2)} ج.م
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {/* 2. Order Metadata: Payment, Day, Time, Date */}
+                                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70 space-y-1.5 text-[11px]">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-slate-500 font-semibold">طريقة الدفع:</span>
+                                      <strong className="text-slate-900 font-bold">{order.paymentMethodDisplay}</strong>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-slate-500 font-semibold flex items-center gap-1">
+                                        <Calendar className="w-3.5 h-3.5 text-amber-500" />
+                                        اليوم:
+                                      </span>
+                                      <strong className="text-slate-900 font-bold">{order.dayName}</strong>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-slate-500 font-semibold flex items-center gap-1">
+                                        <Clock className="w-3.5 h-3.5 text-amber-500" />
+                                        الساعة:
+                                      </span>
+                                      <strong className="text-slate-900 font-bold font-mono">{order.time}</strong>
+                                    </div>
+                                    <div className="flex items-center justify-between border-t border-slate-200/60 pt-1.5">
+                                      <span className="text-slate-500 font-semibold">تاريخ الشراء:</span>
+                                      <strong className="text-slate-900 font-bold">{order.date}</strong>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )
                 ) : (
+                  /* Active Cart Items: Notice that when cart.length > 0, the past orders list is hidden temporarily */
                   cart.map(item => (
                     <div 
                       key={item.id} 
@@ -1516,7 +1903,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                           <span>اللون: {item.selectedColor}</span>
                         </div>
                         <div className="flex items-center justify-between pt-2">
-                          <span className="font-extrabold text-slate-900 text-sm">${(item.product.price * item.quantity).toFixed(2)}</span>
+                          <span className="font-extrabold text-slate-900 text-sm">{(item.product.price * item.quantity).toFixed(2)} ج.م</span>
                           
                           {/* Quantity control */}
                           <div className="flex items-center border border-slate-200 bg-white rounded-lg px-1.5 py-0.5">
@@ -1553,7 +1940,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                         value={couponCode}
                         onChange={(e) => setCouponCode(e.target.value)}
                         placeholder="أدخل الكود (مثال: KAMEL10)"
-                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-center font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-center font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 uppercase"
                       />
                       <button
                         onClick={applyCoupon}
@@ -1593,11 +1980,11 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                     )}
                   </div>
 
-                  {/* Calc breakdown */}
+                  {/* Calc breakdown in Egyptian Pound */}
                   <div className="space-y-2 border-t border-slate-200/60 pt-3 text-xs text-slate-600">
                     <div className="flex justify-between">
                       <span>المجموع الفرعي:</span>
-                      <span className="font-bold text-slate-900">${subtotal.toFixed(2)}</span>
+                      <span className="font-bold text-slate-900">{subtotal.toFixed(2)} ج.م</span>
                     </div>
                     {discount > 0 && (
                       <div className="flex justify-between text-emerald-700">
@@ -1609,22 +1996,22 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                             </span>
                           )}
                         </span>
-                        <span className="font-bold">-${discount.toFixed(2)}</span>
+                        <span className="font-bold">-{discount.toFixed(2)} ج.م</span>
                       </div>
                     )}
                     <div className="flex justify-between">
                       <span>رسوم الشحن والتوصيل:</span>
                       <span className="font-bold text-slate-900">
-                        {shippingCost === 0 ? "شحن مجاني" : `$${shippingCost.toFixed(2)}`}
+                        {shippingCost === 0 ? "شحن مجاني" : `${shippingCost.toFixed(2)} ج.م`}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>الضريبة المضافة VAT (15%):</span>
-                      <span className="font-bold text-slate-900">${tax.toFixed(2)}</span>
+                      <span className="font-bold text-slate-900">{tax.toFixed(2)} ج.م</span>
                     </div>
                     <div className="flex justify-between text-base font-extrabold text-slate-950 border-t border-slate-200/80 pt-2 mt-1">
                       <span>المبلغ الإجمالي الصافي:</span>
-                      <span>${grandTotal.toFixed(2)}</span>
+                      <span>{grandTotal.toFixed(2)} ج.م</span>
                     </div>
                   </div>
 
@@ -1655,17 +2042,20 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl relative"
+              className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative scrollbar-thin scrollbar-thumb-amber-500 scrollbar-track-slate-100"
             >
+              {/* Close Button X */}
               <button 
+                type="button"
                 onClick={() => setIsCheckingOut(false)}
-                className="absolute top-6 left-6 p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-950 transition-all z-10"
+                className="absolute top-4 left-4 p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-950 transition-all z-30 cursor-pointer shadow-sm"
+                title="إغلاق الشاشة (X)"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
 
               {/* Steps Progress Header */}
-              <div className="bg-slate-900 text-white p-6 text-right">
+              <div className="bg-slate-900 text-white p-6 text-right relative">
                 <h3 className="font-bold text-lg text-amber-400">إتمام الشراء ومحاكاة المعاملات</h3>
                 <p className="text-slate-400 text-xs mt-1">يرجى تأكيد بيانات الشحن والدفع لتحديث جداول MySQL.</p>
                 
@@ -1757,7 +2147,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                           <span className="block text-xs font-bold text-slate-900">أرامكس السريع Aramex Express</span>
                           <span className="text-[10px] text-slate-500">توصيل سريع خلال 2-3 أيام عمل لعنوان العميل مباشرة</span>
                         </div>
-                        <span className="text-xs font-bold text-slate-900">$15.00</span>
+                        <span className="text-xs font-bold text-slate-900">15.00 ج.م</span>
                       </label>
 
                       <label className="flex items-center gap-3 p-3 bg-slate-50 border rounded-xl cursor-pointer hover:border-amber-500 transition-all">
@@ -1772,7 +2162,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                           <span className="block text-xs font-bold text-slate-900">دي إتش إل بريميوم DHL Premium</span>
                           <span className="text-[10px] text-slate-500">شحن جوي مؤمن وفائق السرعة خلال 24-48 ساعة</span>
                         </div>
-                        <span className="text-xs font-bold text-slate-900">$25.00</span>
+                        <span className="text-xs font-bold text-slate-900">25.00 ج.م</span>
                       </label>
 
                       <label className="flex items-center gap-3 p-3 bg-slate-50 border rounded-xl cursor-pointer hover:border-amber-500 transition-all">
@@ -1830,6 +2220,60 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                         طريقة السداد والتحويل المالي:
                       </h4>
                       <span className="text-[11px] text-slate-500">اختر وسيلة الدفع المناسبة</span>
+                    </div>
+
+                    {/* Dedicated Purchase Code Box (100% Discount) */}
+                    <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/15 border-2 border-amber-500/50 p-4 rounded-2xl space-y-3 text-right shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-amber-600 animate-pulse" />
+                          <h5 className="text-xs sm:text-sm font-black text-slate-950">
+                            خانة كود الشراء (خصم 100% مجاناً):
+                          </h5>
+                        </div>
+                        <span className="text-[10px] bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full font-black">
+                          كود خصم 100%
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-700 leading-relaxed font-medium">
+                        عند إعطاء كود الشراء للعميل، أدخله هنا واضغط على الزر لإتمام وتأكيد الشراء فوراً وظهور رسالة تم الشراء!
+                      </p>
+                      
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={paymentPurchaseCodeInput}
+                          onChange={(e) => {
+                            setPaymentPurchaseCodeInput(e.target.value);
+                            setPaymentPurchaseCodeMsg(null);
+                          }}
+                          placeholder="أدخل كود الشراء (مثال: VIP-100-FREE)"
+                          className="flex-1 px-3.5 py-2.5 rounded-xl border border-amber-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 text-center uppercase"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleApplyPaymentPurchaseCode}
+                          className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition-all shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>تطبيق كود الشراء</span>
+                        </button>
+                      </div>
+
+                      {paymentPurchaseCodeMsg && (
+                        <div className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                          paymentPurchaseCodeMsg.type === "success" 
+                            ? "bg-emerald-100 text-emerald-950 border border-emerald-300"
+                            : "bg-red-100 text-red-950 border border-red-300"
+                        }`}>
+                          {paymentPurchaseCodeMsg.type === "success" ? (
+                            <Check className="w-4 h-4 text-emerald-600 shrink-0 stroke-[3]" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                          )}
+                          <span>{paymentPurchaseCodeMsg.text}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-3">
@@ -2045,7 +2489,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                     {/* Order summary row */}
                     <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-xl flex items-center justify-between text-xs">
                       <span className="text-slate-600 font-semibold">المجموع النهائي المستحق:</span>
-                      <strong className="text-slate-950 text-base font-black">${grandTotal.toFixed(2)}</strong>
+                      <strong className="text-slate-950 text-base font-black">{grandTotal.toFixed(2)} ج.م</strong>
                     </div>
 
                     {/* WhatsApp Direct Action Button */}
@@ -2102,12 +2546,27 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                       <p className="text-emerald-400 font-bold mt-2">✓ تم التزام سلامة وتكامل البيانات والقيود بنجاح (COMMIT Transaction)!</p>
                     </div>
 
-                    <button
-                      onClick={() => setIsCheckingOut(false)}
-                      className="w-full py-3 bg-slate-950 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all mt-4"
-                    >
-                      متابعة التسوق بالمتجر
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-3 mt-4 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCheckingOut(false);
+                          setIsCartOpen(true);
+                        }}
+                        className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-black transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Receipt className="w-4 h-4" />
+                        <span>فتح السلة وعرض سجل الطلبات السابقة</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsCheckingOut(false)}
+                        className="flex-1 py-3 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                        <span>إغلاق الشاشة ومتابعة التسوق</span>
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -2198,7 +2657,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                   {/* Price */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-700">
-                      السعر ($): *
+                      السعر (ج.م): *
                     </label>
                     <input
                       type="number"
@@ -2214,7 +2673,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                   {/* Compare Price */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-700">
-                      السعر قبل الخصم ($):
+                      السعر قبل الخصم (ج.م):
                     </label>
                     <input
                       type="number"
@@ -2337,17 +2796,35 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                     />
                   </div>
 
+                  {/* Sizes Selection Boxes (XS, S, M, L, XL) */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-700">
-                      المقاسات المتوفرة (مفصولة بفاصلة):
+                      المقاسات المتوفرة (حدد الخانات المطلوبة): *
                     </label>
-                    <input
-                      type="text"
-                      value={newProdSizes}
-                      onChange={(e) => setNewProdSizes(e.target.value)}
-                      placeholder="S, M, L, XL, XXL"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    />
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {AVAILABLE_SIZES.map(size => {
+                        const isSelected = newProdSizesList.includes(size);
+                        return (
+                          <button
+                            key={size}
+                            type="button"
+                            onClick={() => toggleNewProdSize(size)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border-2 transition-all cursor-pointer ${
+                              isSelected
+                                ? "border-amber-500 bg-amber-50 text-amber-950 shadow-xs"
+                                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                            }`}
+                          >
+                            <div className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[9px] border ${
+                              isSelected ? "bg-amber-500 text-slate-950 border-amber-500 font-black" : "border-slate-300 bg-white"
+                            }`}>
+                              {isSelected && "✓"}
+                            </div>
+                            <span>{size}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 

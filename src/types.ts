@@ -97,6 +97,24 @@ export interface PurchaseCode {
   created_at: string;
 }
 
+export interface CompletedOrder {
+  id: string;
+  orderNumber: string;
+  items: CartItem[];
+  subtotal: number;
+  discount: number;
+  grandTotal: number;
+  paymentMethod: string;
+  paymentMethodDisplay: string;
+  shippingMethod: string;
+  dayName: string;
+  time: string;
+  date: string;
+  timestamp: number;
+  usedPurchaseCode?: string;
+  usedCouponCode?: string;
+}
+
 export interface ActivityLog {
   id: number;
   user_id?: number;
