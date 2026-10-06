@@ -63,10 +63,12 @@ export default function App() {
   
   // Dynamic Site Configuration editable via Gear Settings
   const [siteConfig, setSiteConfig] = useState({
-    siteName: "بوتيك الأناقة & MySQL Designer",
-    developerCredit: "بإشراف المطور: كامل أبو سمرة – kamel3lom",
+    siteName: "mr mars store",
+    developerCredit: "بإشراف المطور: Amir Lamay",
+    showDevCreditAtTop: false,
     heroTitle: "بوتيك الأناقة العصرية",
-    heroSubtitle: "تصاميم إيطالية فاخرة منتقاة بعناية للبدلات الرسمية والفساتين الكلاسيكية والإكسسوارات المتميزة، صُممت لتمنحك إطلالة فريدة تعبر عن هويتك الراقية."
+    heroSubtitle: "تصاميم فاخرة منتقاة بعناية للملابسو الفساتين الكلاسيكية والإكسسوارات المتميزة، صُممت لتمنحك إطلالة فريدة تعبر عن هويتك الراقية.",
+    heroBgImage: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200"
   });
 
   // Winter Star-Snow effect toggle
@@ -87,7 +89,7 @@ export default function App() {
   // Single-use 100% Purchase Codes state
   const [purchaseCodes, setPurchaseCodes] = useState<PurchaseCode[]>(INITIAL_PURCHASE_CODES);
 
-  // Shopping Cart state lifted to top level
+  // Shopping Cart state isolated per user account (empty by default)
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
 
@@ -109,6 +111,27 @@ export default function App() {
   const [userAuthError, setUserAuthError] = useState("");
   const [userAuthSuccess, setUserAuthSuccess] = useState("");
 
+  // Switch and load isolated cart whenever customer session changes
+  useEffect(() => {
+    const key = currentUser ? `mr_cart_user_${currentUser.id}` : "mr_cart_guest";
+    try {
+      const saved = localStorage.getItem(key);
+      setCart(saved ? JSON.parse(saved) : []);
+    } catch {
+      setCart([]);
+    }
+  }, [currentUser]);
+
+  // Persist cart items uniquely for current user
+  useEffect(() => {
+    const key = currentUser ? `mr_cart_user_${currentUser.id}` : "mr_cart_guest";
+    try {
+      localStorage.setItem(key, JSON.stringify(cart));
+    } catch {
+      // ignore storage error
+    }
+  }, [cart, currentUser]);
+
   // Customer Management in Settings state
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
@@ -129,8 +152,10 @@ export default function App() {
   // Temp form states for settings editing
   const [tempSiteName, setTempSiteName] = useState(siteConfig.siteName);
   const [tempDeveloperCredit, setTempDeveloperCredit] = useState(siteConfig.developerCredit);
+  const [tempShowDevCreditAtTop, setTempShowDevCreditAtTop] = useState(siteConfig.showDevCreditAtTop);
   const [tempHeroTitle, setTempHeroTitle] = useState(siteConfig.heroTitle);
   const [tempHeroSubtitle, setTempHeroSubtitle] = useState(siteConfig.heroSubtitle);
+  const [tempHeroBgImage, setTempHeroBgImage] = useState(siteConfig.heroBgImage);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
 
   // Coupon Creation form states
@@ -247,8 +272,10 @@ export default function App() {
     if (isSettingsUnlocked) {
       setTempSiteName(siteConfig.siteName);
       setTempDeveloperCredit(siteConfig.developerCredit);
+      setTempShowDevCreditAtTop(siteConfig.showDevCreditAtTop || false);
       setTempHeroTitle(siteConfig.heroTitle);
       setTempHeroSubtitle(siteConfig.heroSubtitle);
+      setTempHeroBgImage(siteConfig.heroBgImage || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200");
       setShowSettingsModal(true);
     } else {
       setAdminPasswordInput("");
@@ -265,8 +292,10 @@ export default function App() {
       setShowAuthModal(false);
       setTempSiteName(siteConfig.siteName);
       setTempDeveloperCredit(siteConfig.developerCredit);
+      setTempShowDevCreditAtTop(siteConfig.showDevCreditAtTop || false);
       setTempHeroTitle(siteConfig.heroTitle);
       setTempHeroSubtitle(siteConfig.heroSubtitle);
+      setTempHeroBgImage(siteConfig.heroBgImage || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200");
       setShowSettingsModal(true);
       handleAddActivity("ADMIN_UNLOCK", "تم تسجيل دخول المسؤول إلى لوحة إعدادات البوتيك بنجاح.");
     } else {
@@ -280,14 +309,16 @@ export default function App() {
     const newConfig = {
       siteName: tempSiteName.trim() || siteConfig.siteName,
       developerCredit: tempDeveloperCredit.trim() || siteConfig.developerCredit,
+      showDevCreditAtTop: !!tempShowDevCreditAtTop,
       heroTitle: tempHeroTitle.trim() || siteConfig.heroTitle,
-      heroSubtitle: tempHeroSubtitle.trim() || siteConfig.heroSubtitle
+      heroSubtitle: tempHeroSubtitle.trim() || siteConfig.heroSubtitle,
+      heroBgImage: tempHeroBgImage.trim() || siteConfig.heroBgImage
     };
     setSiteConfig(newConfig);
     syncDataToCloud("siteConfig", newConfig);
     setSaveSuccessNotice(true);
     setTimeout(() => setSaveSuccessNotice(false), 2500);
-    handleAddActivity("UPDATE_SITE_CONFIG", "تم تحديث نصوص وهوية الموقع واسم البوتيك ومزامنتها سحابياً.");
+    handleAddActivity("UPDATE_SITE_CONFIG", "تم تحديث نصوص وهوية الموقع وخلفية الواجهة ومزامنتها سحابياً.");
   };
 
   // Coupon handlers
@@ -726,17 +757,19 @@ export default function App() {
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           
           {/* Logo & Author (Customizable from Settings) */}
-          <div className="flex items-center gap-3 text-right">
-            <span className="h-9 w-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-slate-950 font-black font-mono shadow-md">
-              K
+          <div className="flex items-center gap-2 sm:gap-3 text-right">
+            <span className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-slate-950 font-black font-mono shadow-md text-xs sm:text-sm shrink-0">
+              M
             </span>
-            <div>
-              <span className="block text-sm sm:text-base font-black text-white leading-tight">
+            <div className="flex flex-row items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap">
+              <span className="text-xs sm:text-base font-black text-white leading-tight whitespace-nowrap">
                 {siteConfig.siteName}
               </span>
-              <span className="text-[11px] text-amber-400 font-bold block">
-                {siteConfig.developerCredit}
-              </span>
+              {siteConfig.showDevCreditAtTop && (
+                <span className="text-[10px] sm:text-xs text-amber-400 font-bold whitespace-nowrap bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                  {siteConfig.developerCredit}
+                </span>
+              )}
             </div>
             {/* Realtime Firebase Cloud & Encryption Status Indicator */}
             <div className="hidden lg:flex items-center gap-2 bg-slate-900/90 border border-slate-800 rounded-xl px-2.5 py-1 text-[10px] mr-2">
@@ -765,18 +798,20 @@ export default function App() {
               </button>
             )}
 
-            {/* Add Product Button */}
-            <button
-              onClick={() => {
-                if (activeView !== "storefront") setActiveView("storefront");
-                setIsAddProductTriggered(true);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition-all shadow-md"
-              title="إضافة منتج جديد للمتجر"
-            >
-              <Plus className="w-3.5 h-3.5 stroke-[3]" />
-              <span className="hidden sm:inline">أضف منتج</span>
-            </button>
+            {/* Add Product Button (Admin Only - Hidden for normal visitors) */}
+            {isSettingsUnlocked && (
+              <button
+                onClick={() => {
+                  if (activeView !== "storefront") setActiveView("storefront");
+                  setIsAddProductTriggered(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition-all shadow-md shrink-0"
+                title="إضافة منتج جديد للمتجر (صلاحية المشرف)"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span className="hidden sm:inline">أضف منتج</span>
+              </button>
+            )}
 
             {/* Shopping Cart Trigger (Placed where Log was, Log is hidden) */}
             <button
@@ -1103,7 +1138,7 @@ export default function App() {
                       value={tempSiteName}
                       onChange={(e) => setTempSiteName(e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                      placeholder="بوتيك الأناقة & MySQL Designer"
+                      placeholder="mr mars store"
                     />
                   </div>
 
@@ -1116,8 +1151,25 @@ export default function App() {
                       value={tempDeveloperCredit}
                       onChange={(e) => setTempDeveloperCredit(e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                      placeholder="بإشراف المطور: كامل أبو سمرة – kamel3lom"
+                      placeholder="بإشراف المطور: Amir Lamay"
                     />
+                  </div>
+
+                  {/* Toggle show developer supervision at the top */}
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <div>
+                      <span className="block text-xs font-bold text-white">إظهار إشراف المطور في الشريط العلوي</span>
+                      <span className="block text-[11px] text-slate-400">الافتراضي: إخفاؤه من الأعلى وظهوره فقط في أسفل الموقع</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={tempShowDevCreditAtTop} 
+                        onChange={(e) => setTempShowDevCreditAtTop(e.target.checked)} 
+                        className="sr-only peer" 
+                      />
+                      <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
                   </div>
 
                   <div className="space-y-1.5">
@@ -1142,8 +1194,49 @@ export default function App() {
                       value={tempHeroSubtitle}
                       onChange={(e) => setTempHeroSubtitle(e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none leading-relaxed"
-                      placeholder="تصاميم إيطالية فاخرة منتقاة بعناية..."
+                      placeholder="تصاميم فاخرة منتقاة بعناية للملابسو الفساتين الكلاسيكية والإكسسوارات المتميزة..."
                     />
+                  </div>
+
+                  {/* Hero Background Image URL & File Upload */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-300">
+                      صورة خلفية الواجهة الرئيسية (Hero Background):
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        value={tempHeroBgImage}
+                        onChange={(e) => setTempHeroBgImage(e.target.value)}
+                        className="flex-1 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                        placeholder="https://images.unsplash.com/..."
+                      />
+                      <label className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 cursor-pointer flex items-center gap-1.5 shrink-0">
+                        <span>رفع صورة</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                if (ev.target?.result) setTempHeroBgImage(ev.target.result as string);
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                    {/* Background Preview */}
+                    {tempHeroBgImage && (
+                      <div className="relative h-20 w-full rounded-xl overflow-hidden border border-slate-800 mt-2">
+                        <img src={tempHeroBgImage} alt="Hero Preview" className="w-full h-full object-cover" />
+                        <span className="absolute bottom-1 right-2 bg-slate-950/80 text-[10px] text-amber-300 px-2 py-0.5 rounded">معاينة الخلفية الحالية</span>
+                      </div>
+                    )}
                   </div>
 
                   <button
@@ -2217,7 +2310,7 @@ export default function App() {
 
               {/* Log footer */}
               <div className="p-4 bg-slate-900/40 border-t border-slate-800 text-[10px] text-slate-500 text-center">
-                مبني لتسجيل عمليات الإدارة وفق متطلبات كامل أبو سمرة – kamel3lom
+                مبني لتسجيل عمليات الإدارة وفق متطلبات Amir Lamay
               </div>
             </motion.div>
           </div>
@@ -2225,11 +2318,17 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main App Footer */}
-      <footer className="bg-slate-950 border-t border-slate-850 py-8 px-6 text-center text-slate-500 text-xs">
-        <div className="max-w-7xl mx-auto space-y-3">
-          <p className="font-medium text-slate-400">جميع الحقوق محفوظة للمطور كامل أبو سمرة – kamel3lom © 2026</p>
-          <p className="text-[10px] leading-relaxed max-w-2xl mx-auto">
-            منصة متكاملة لمتجر ملابس وإكسسوارات إلكتروني راقٍ مع نظام تتبع مخازن وسجلات نشاط. مبني كنموذج رائد ومميز للتطبيقات المعقدة.
+      <footer className="bg-slate-950 border-t border-slate-800 py-8 px-6 text-center text-slate-400 text-xs">
+        <div className="max-w-7xl mx-auto space-y-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-800/80 pb-5">
+            <div className="text-right">
+              <span className="text-slate-500 text-[11px] block">الجهة الإشرافية:</span>
+              <strong className="text-amber-400 text-sm font-bold">بإشراف المطور: Amir Lamay</strong>
+            </div>
+            <p className="text-xs text-slate-300 font-medium">منصة متكاملة لمتجر ملابس وإكسسوارات إلكتروني راقٍي</p>
+          </div>
+          <p className="font-medium text-slate-400 pt-1">
+            جميع الحقوق محفوظة للمطور Amir Lamay –  © {new Date().getFullYear()}
           </p>
         </div>
       </footer>

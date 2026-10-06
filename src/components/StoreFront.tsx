@@ -38,7 +38,9 @@ import {
   Calendar,
   Clock,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Heart,
+  Upload
 } from "lucide-react";
 import { Product, Category, CartItem, Coupon, ActivityLog, Review, PurchaseCode, AppCustomer, PaymentSettings, CompletedOrder } from "../types";
 import { SAMPLE_CATEGORIES, INITIAL_PRODUCT_REVIEWS, SAMPLE_PRODUCTS } from "../dbSchemaData";
@@ -48,8 +50,10 @@ interface StoreFrontProps {
   siteConfig: {
     siteName: string;
     developerCredit: string;
+    showDevCreditAtTop?: boolean;
     heroTitle: string;
     heroSubtitle: string;
+    heroBgImage?: string;
   };
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
@@ -168,46 +172,79 @@ export default function StoreFront({
   const [paymentPurchaseCodeInput, setPaymentPurchaseCodeInput] = useState("");
   const [paymentPurchaseCodeMsg, setPaymentPurchaseCodeMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Order History in Cart state (Past Purchases)
-  const [orderHistory, setOrderHistory] = useState<CompletedOrder[]>(() => {
-    const now = new Date();
-    const arabicDays = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
-    return [
-      {
-        id: "ord-sample-1",
-        orderNumber: "ORD-2026-9184",
-        items: [
-          {
-            id: 101,
-            product: SAMPLE_PRODUCTS[0],
-            quantity: 1,
-            selectedSize: "L",
-            selectedColor: "كحلي داكن"
-          }
-        ],
-        subtotal: SAMPLE_PRODUCTS[0].price,
-        discount: 0,
-        grandTotal: SAMPLE_PRODUCTS[0].price,
-        paymentMethod: "instapay",
-        paymentMethodDisplay: "إنستاباي InstaPay (تحويل فوري)",
-        shippingMethod: "Aramex Express",
-        dayName: arabicDays[(now.getDay() + 6) % 7],
-        time: "03:45 مساءً",
-        date: new Date(Date.now() - 86400000).toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" }),
-        timestamp: Date.now() - 86400000
-      }
-    ];
+  // Wishlist state (Saved items to view without searching again)
+  const [wishlist, setWishlist] = useState<number[]>(() => {
+    try {
+      const key = currentUser ? `mr_wishlist_${currentUser.id}` : "mr_wishlist_guest";
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
-  const [expandedOrderId, setExpandedOrderId] = useState<string | null>("ord-sample-1");
+  const [isWishlistOpen, setIsWishlistOpen] = useState(false);
 
-  // Firebase Realtime Subscription for Reviews & Order History
   useEffect(() => {
-    const unsubOrders = subscribeToRealtimeNode<CompletedOrder[]>("orderHistory", (cloudOrders) => {
-      if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
-        setOrderHistory(cloudOrders);
-      }
-    });
+    try {
+      const key = currentUser ? `mr_wishlist_${currentUser.id}` : "mr_wishlist_guest";
+      const saved = localStorage.getItem(key);
+      setWishlist(saved ? JSON.parse(saved) : []);
+    } catch {
+      setWishlist([]);
+    }
+  }, [currentUser]);
 
+  useEffect(() => {
+    try {
+      const key = currentUser ? `mr_wishlist_${currentUser.id}` : "mr_wishlist_guest";
+      localStorage.setItem(key, JSON.stringify(wishlist));
+    } catch {
+      // ignore
+    }
+  }, [wishlist, currentUser]);
+
+  const toggleWishlist = (prodId: number) => {
+    setWishlist(prev =>
+      prev.includes(prodId) ? prev.filter(id => id !== prodId) : [...prev, prodId]
+    );
+  };
+  const isInWishlist = (prodId: number) => wishlist.includes(prodId);
+
+  // Order History in Cart state (Past Purchases - isolated per user, empty by default)
+  const [orderHistory, setOrderHistory] = useState<CompletedOrder[]>(() => {
+    try {
+      const key = currentUser ? `mr_orders_user_${currentUser.id}` : "mr_orders_guest";
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+
+  // Sync orderHistory on user change
+  useEffect(() => {
+    try {
+      const key = currentUser ? `mr_orders_user_${currentUser.id}` : "mr_orders_guest";
+      const saved = localStorage.getItem(key);
+      setOrderHistory(saved ? JSON.parse(saved) : []);
+    } catch {
+      setOrderHistory([]);
+    }
+  }, [currentUser]);
+
+  // Persist orderHistory per user
+  useEffect(() => {
+    try {
+      const key = currentUser ? `mr_orders_user_${currentUser.id}` : "mr_orders_guest";
+      localStorage.setItem(key, JSON.stringify(orderHistory));
+    } catch {
+      // ignore
+    }
+  }, [orderHistory, currentUser]);
+
+  // Firebase Realtime Subscription for Reviews
+  useEffect(() => {
     const unsubReviews = subscribeToRealtimeNode<Review[]>("reviews", (cloudReviews) => {
       if (Array.isArray(cloudReviews)) {
         setReviews(cloudReviews);
@@ -215,7 +252,6 @@ export default function StoreFront({
     });
 
     return () => {
-      unsubOrders();
       unsubReviews();
     };
   }, []);
@@ -605,7 +641,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
       onConsumePurchaseCode(appliedPurchaseCode.code);
     }
 
-    // Record to order history
+    // Record to order history (private to this customer)
     const now = new Date();
     const arabicDays = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
     const newOrderRecord: CompletedOrder = {
@@ -623,11 +659,20 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
       date: now.toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" }),
       timestamp: Date.now(),
       usedPurchaseCode: appliedPurchaseCode?.code,
-      usedCouponCode: appliedCoupon?.coupon_code
+      usedCouponCode: appliedCoupon?.coupon_code,
+      userId: currentUser ? currentUser.id : "guest",
+      customerId: currentUser?.id,
+      customerUsername: currentUser?.username || `${firstName} ${lastName}`,
+      isGuestSession: !currentUser
     };
     setOrderHistory(prev => {
       const next = [newOrderRecord, ...prev];
-      syncDataToCloud("orderHistory", next);
+      const key = currentUser ? `mr_orders_user_${currentUser.id}` : "mr_orders_guest";
+      try {
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
       return next;
     });
     setExpandedOrderId(newOrderRecord.id);
@@ -861,66 +906,32 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
     <div className="w-full bg-slate-50 min-h-screen text-slate-800 font-sans" dir="rtl">
       {/* 1. Header Hero section */}
       <div className="relative overflow-hidden bg-slate-900 text-white border-b border-amber-500/30">
-        <div className="absolute inset-0 bg-cover bg-center opacity-30" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200')" }}></div>
+        <div 
+          className="absolute inset-0 bg-cover bg-center opacity-30" 
+          style={{ backgroundImage: `url('${siteConfig.heroBgImage || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200"}')` }}
+        ></div>
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/80 to-transparent"></div>
         
-        <div className="relative max-w-7xl mx-auto px-6 py-12 lg:py-20 flex flex-col md:flex-row items-center justify-between gap-8">
+        <div className="relative max-w-7xl mx-auto px-6 py-12 lg:py-16 flex flex-col items-start justify-center">
           <div className="text-right space-y-4 max-w-2xl">
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold">
               <Sparkles className="w-3.5 h-3.5" />
               متجر الملابس والإكسسوارات الفاخرة
             </span>
-            <h1 className="text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight font-sans">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight font-sans">
               {siteConfig.heroTitle}
             </h1>
-            <p className="text-slate-300 text-base lg:text-lg leading-relaxed">
+            <p className="text-slate-300 text-sm sm:text-base lg:text-lg leading-relaxed">
               {siteConfig.heroSubtitle}
             </p>
-            <div className="pt-2 flex flex-wrap gap-4 text-xs text-slate-400">
-              <div className="flex items-center gap-1.5 bg-slate-800/60 px-3.5 py-1.5 rounded-lg border border-slate-700/50">
-                <span>الجهة الإشرافية:</span>
-                <strong className="text-white">{siteConfig.developerCredit}</strong>
+            {siteConfig.showDevCreditAtTop && (
+              <div className="pt-2 flex flex-wrap gap-4 text-xs text-slate-400">
+                <div className="flex items-center gap-1.5 bg-slate-800/60 px-3.5 py-1.5 rounded-lg border border-slate-700/50">
+                  <span>الجهة الإشرافية:</span>
+                  <strong className="text-white">{siteConfig.developerCredit}</strong>
+                </div>
               </div>
-            </div>
-          </div>
-
-          {/* Boutique VIP Highlights & Cart Quick Action */}
-          <div className="bg-slate-900/90 border border-slate-700/60 p-6 rounded-2xl w-full max-w-sm backdrop-blur-md shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-semibold text-amber-400 text-sm flex items-center gap-2">
-                <Sparkles className="w-4 h-4" />
-                مزايا البوتيك الحصرية
-              </h3>
-              <span className="text-[11px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-bold border border-amber-500/30">
-                إصدار مميز
-              </span>
-            </div>
-            
-            <div className="space-y-2.5 text-xs text-slate-300">
-              <div className="flex items-center gap-2.5 bg-slate-800/50 p-2.5 rounded-xl border border-slate-700/30">
-                <span className="h-6 w-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">✓</span>
-                <span>تصاميم إيطالية أصلية 100% وأقمشة فاخرة منتقاة</span>
-              </div>
-              <div className="flex items-center gap-2.5 bg-slate-800/50 p-2.5 rounded-xl border border-slate-700/30">
-                <span className="h-6 w-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">✓</span>
-                <span>شحن وتوصيل فوري لكافة الوجهات بأمان تام</span>
-              </div>
-              <div className="flex items-center gap-2.5 bg-slate-800/50 p-2.5 rounded-xl border border-slate-700/30">
-                <span className="h-6 w-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">✓</span>
-                <span>ضمان الجودة والاستبدال وتتبع حالة الطلبات</span>
-              </div>
-            </div>
-
-            <button 
-              onClick={() => {
-                setIsCartOpen(true);
-                onAddActivity("VIEW_CART", "استعراض عربة التسوق الحالية.");
-              }}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold transition-all shadow-lg text-sm"
-            >
-              <ShoppingBag className="w-4 h-4" />
-              عرض حقيبة التسوق ({cart.reduce((sum, item) => sum + item.quantity, 0)})
-            </button>
+            )}
           </div>
         </div>
       </div>
@@ -941,7 +952,45 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
               </span>
             </div>
 
-            <div className="relative w-full overflow-hidden select-none py-1">
+            {/* Mobile View: 3 items in square aspect ratio */}
+            <div className="grid grid-cols-3 gap-2 sm:hidden py-1">
+              {marqueeProducts.slice(0, 3).map((item) => {
+                const hasDiscount = item.discount_percentage || (item.compare_at_price && item.compare_at_price > item.price);
+                const discountVal = item.discount_percentage || (item.compare_at_price ? Math.round(((item.compare_at_price - item.price) / item.compare_at_price) * 100) : 0);
+
+                return (
+                  <div
+                    key={`mob-marquee-${item.id}`}
+                    onClick={() => {
+                      setSelectedProduct(item);
+                      setActiveImageIdx(0);
+                      onAddActivity("VIEW_MARQUEE_PRODUCT", `الدخول المباشر على المنتج المختار "${item.product_name}".`);
+                    }}
+                    className="relative aspect-square rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 hover:border-amber-500/60 p-1.5 flex flex-col justify-between cursor-pointer group shadow-md"
+                  >
+                    <div className="relative w-full h-[62%] rounded-xl overflow-hidden bg-slate-800">
+                      <img src={item.image_url} alt={item.product_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      {hasDiscount ? (
+                        <span className="absolute top-1 left-1 bg-red-600 text-white text-[8px] font-black px-1 rounded">
+                          %{discountVal}-
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="text-center overflow-hidden pt-0.5">
+                      <h4 className="text-[10px] font-bold text-white truncate leading-tight">
+                        {item.product_name}
+                      </h4>
+                      <span className="text-[10px] font-black text-amber-400 block">
+                        {item.price.toFixed(0)} ج.م
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop View: Scrolling Marquee */}
+            <div className="hidden sm:block relative w-full overflow-hidden select-none py-1">
               <div className="animate-marquee gap-4 flex w-max">
                 {[...marqueeProducts, ...marqueeProducts].map((item, idx) => {
                   const hasDiscount = item.discount_percentage || (item.compare_at_price && item.compare_at_price > item.price);
@@ -1028,15 +1077,27 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
 
           {/* Search, Sort and Add Product controls */}
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-            {/* Add Product Button */}
+            {/* Wishlist Trigger Button */}
             <button
-              onClick={() => setIsAddProductModalOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm shadow-sm transition-all shrink-0"
-              title="إضافة منتج جديد للمتجر"
+              onClick={() => setIsWishlistOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+              title="عرض قائمة أمنياتي"
             >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>أضف منتج</span>
+              <Heart className="w-4 h-4 fill-red-500 text-red-500" />
+              <span>أمنياتي ({wishlist.length})</span>
             </button>
+
+            {/* Add Product Button (Admin Only) */}
+            {isAdmin && (
+              <button
+                onClick={() => setIsAddProductModalOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm shadow-sm transition-all shrink-0 cursor-pointer"
+                title="إضافة منتج جديد للمتجر"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>أضف منتج</span>
+              </button>
+            )}
 
             <div className="relative flex-1 md:flex-initial min-w-[200px]">
               <span className="absolute inset-y-0 right-3 flex items-center text-slate-400">
@@ -1064,27 +1125,28 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
           </div>
         </div>
 
-        {/* Product Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+        {/* Product Cards Grid: 3 items per row on mobile with scaled compact sizing and clear details */}
+        <div className="grid grid-cols-3 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-6 lg:gap-8">
           {filteredProducts.map(product => {
             const isLowStock = product.stock <= 3;
             const isOutOfStock = product.stock === 0;
             const hasDiscount = product.discount_percentage || (product.compare_at_price && product.compare_at_price > product.price);
             const discountPercent = product.discount_percentage || (product.compare_at_price ? Math.round(((product.compare_at_price - product.price) / product.compare_at_price) * 100) : 0);
+            const isFav = isInWishlist(product.id);
 
             return (
               <motion.div
                 layout
                 key={product.id}
-                className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-xl hover:border-amber-500/30 transition-all flex flex-col group"
+                className="bg-white rounded-xl sm:rounded-2xl border border-slate-100 overflow-hidden shadow-xs sm:shadow-sm hover:shadow-xl hover:border-amber-500/30 transition-all flex flex-col group relative"
               >
                 {/* Product image container */}
                 <div 
-                  className="relative h-72 w-full overflow-hidden bg-slate-100 cursor-pointer"
+                  className="relative h-28 sm:h-72 w-full overflow-hidden bg-slate-100 cursor-pointer"
                   onClick={() => {
                     setSelectedProduct(product);
                     setActiveImageIdx(0);
-                    onAddActivity("VIEW_PRODUCT_DETAILS", `عرض تفاصيل المنتج ومواصفات الداتا للمنتج "${product.product_name}".`);
+                    onAddActivity("VIEW_PRODUCT_DETAILS", `عرض تفاصيل ومواصفات المنتج "${product.product_name}".`);
                   }}
                 >
                   <img
@@ -1094,37 +1156,54 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                     referrerPolicy="no-referrer"
                   />
                   
-                  {/* Category tag */}
-                  <span className="absolute top-4 right-4 bg-slate-900/80 text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg backdrop-blur-sm z-10">
+                  {/* Category tag (desktop) */}
+                  <span className="hidden sm:inline-block absolute top-4 right-4 bg-slate-900/80 text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg backdrop-blur-sm z-10">
                     {product.category_name}
                   </span>
 
-                  {/* Red Discount Ribbon on top-left aligned horizontally with category */}
+                  {/* Red Discount Ribbon */}
                   {hasDiscount ? (
-                    <span className="absolute top-4 left-4 z-10 bg-red-600 text-white text-xs font-black px-2.5 py-1 rounded-lg shadow-lg flex items-center gap-1">
-                      <span>خصم {discountPercent}%-</span>
+                    <span className="absolute top-1 sm:top-4 left-1 sm:left-4 z-10 bg-red-600 text-white text-[8px] sm:text-xs font-black px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg shadow-sm flex items-center gap-0.5">
+                      <span>%{discountPercent}-</span>
                     </span>
                   ) : null}
 
+                  {/* Quick Wishlist Heart Icon on Card */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleWishlist(product.id);
+                    }}
+                    className={`absolute top-1 sm:top-4 right-1 sm:right-auto sm:left-auto z-20 p-1 sm:p-1.5 rounded-full transition-all ${
+                      isFav 
+                        ? "bg-red-50 text-red-600 shadow-md" 
+                        : "bg-white/80 hover:bg-white text-slate-400 hover:text-red-500 shadow-xs"
+                    }`}
+                    title={isFav ? "إزالة من أمنياتي" : "أضف إلى أمنياتي"}
+                  >
+                    <Heart className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isFav ? "fill-red-500 text-red-500" : ""}`} />
+                  </button>
+
                   {/* Stock label */}
                   {isOutOfStock ? (
-                    <span className="absolute bottom-4 left-4 bg-red-600 text-white text-xs font-semibold px-2.5 py-1 rounded-lg">
-                      نفذت الكمية
+                    <span className="absolute bottom-1 sm:bottom-4 left-1 sm:left-4 bg-red-600 text-white text-[8px] sm:text-xs font-semibold px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg">
+                      نفذت
                     </span>
                   ) : isLowStock ? (
-                    <span className="absolute bottom-4 left-4 bg-amber-500 text-slate-950 text-xs font-bold px-2.5 py-1 rounded-lg animate-pulse">
-                      كمية محدودة! (بقي {product.stock})
+                    <span className="absolute bottom-1 sm:bottom-4 left-1 sm:left-4 bg-amber-500 text-slate-950 text-[8px] sm:text-xs font-bold px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg animate-pulse">
+                      بقي {product.stock}
                     </span>
                   ) : (
-                    <span className="absolute bottom-4 left-4 bg-emerald-500 text-white text-xs font-semibold px-2.5 py-1 rounded-lg">
-                      متوفر في المخزون ({product.stock})
+                    <span className="hidden sm:inline-block absolute bottom-4 left-4 bg-emerald-500 text-white text-xs font-semibold px-2.5 py-1 rounded-lg">
+                      متوفر ({product.stock})
                     </span>
                   )}
                 </div>
 
                 {/* Product details */}
-                <div className="p-6 flex flex-col flex-1 space-y-3">
-                  <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
+                <div className="p-2 sm:p-6 flex flex-col flex-1 justify-between space-y-1.5 sm:space-y-3 text-right">
+                  <div className="hidden sm:flex items-center justify-between text-slate-400 text-xs font-mono">
                     <span>SKU: {product.sku}</span>
                     <div className="flex items-center gap-1 text-amber-500">
                       <Star className="w-3.5 h-3.5 fill-current" />
@@ -1138,51 +1217,81 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                       setSelectedProduct(product);
                       setActiveImageIdx(0);
                     }}
-                    className="font-bold text-lg text-slate-950 group-hover:text-amber-600 transition-colors cursor-pointer line-clamp-1"
+                    className="font-bold text-[11px] sm:text-lg text-slate-950 group-hover:text-amber-600 transition-colors cursor-pointer line-clamp-1"
+                    title={product.product_name}
                   >
                     {product.product_name}
                   </h3>
                   
-                  <p className="text-slate-500 text-sm line-clamp-2 flex-1">
+                  <p className="hidden sm:block text-slate-500 text-sm line-clamp-2 flex-1">
                     {product.description}
                   </p>
 
-                  <div className="flex items-baseline gap-2 pt-2">
-                    <span className="text-2xl font-extrabold text-slate-900">{product.price.toFixed(2)} ج.م</span>
+                  <div className="flex items-baseline gap-1 sm:gap-2 pt-0.5 sm:pt-2">
+                    <span className="text-xs sm:text-2xl font-black text-slate-900">{product.price.toFixed(0)} <span className="text-[10px] sm:text-sm font-normal">ج.م</span></span>
                     {product.compare_at_price && (
-                      <span className="text-sm text-slate-400 line-through">{product.compare_at_price.toFixed(2)} ج.م</span>
+                      <span className="text-[9px] sm:text-sm text-slate-400 line-through">{product.compare_at_price.toFixed(0)}</span>
                     )}
                   </div>
 
                   {/* Add to Cart CTA */}
-                  <div className="pt-4 flex gap-2">
+                  <div className="pt-1 sm:pt-4 flex gap-1 sm:gap-2">
                     <button
                       onClick={() => {
                         setSelectedProduct(product);
                         setActiveImageIdx(0);
-                        onAddActivity("VIEW_PRODUCT_DETAILS", `عرض تفاصيل المنتج ومواصفات الداتا للمنتج "${product.product_name}".`);
+                        onAddActivity("VIEW_PRODUCT_DETAILS", `عرض تفاصيل ومواصفات المنتج "${product.product_name}".`);
                       }}
-                      className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-semibold transition-all"
+                      className="flex-1 py-1 sm:py-2 rounded-lg sm:rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-[10px] sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap"
                     >
                       مواصفات
                     </button>
                     <button
                       disabled={isOutOfStock}
                       onClick={() => handleAddToCart(product)}
-                      className={`flex-2 py-2 px-4 rounded-xl flex items-center justify-center gap-2 text-sm font-bold transition-all ${
+                      className={`flex-1 sm:flex-2 py-1 sm:py-2 px-1 sm:px-4 rounded-lg sm:rounded-xl flex items-center justify-center gap-1 text-[10px] sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
                         isOutOfStock 
                           ? "bg-slate-200 text-slate-400 cursor-not-allowed" 
-                          : "bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-md hover:shadow-lg"
+                          : "bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-xs sm:shadow-md"
                       }`}
+                      title="إضافة للسلة"
                     >
-                      <ShoppingBag className="w-4 h-4" />
-                      إضافة للسلة
+                      <ShoppingBag className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
+                      <span className="hidden sm:inline">إضافة للسلة</span>
+                      <span className="sm:hidden">السلة</span>
                     </button>
                   </div>
                 </div>
               </motion.div>
             );
           })}
+        </div>
+
+        {/* Boutique Advantages (Moved from top hero to bottom left) */}
+        <div className="mt-12 bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-xl max-w-2xl ml-auto md:ml-0 md:mr-auto text-right">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <h3 className="font-semibold text-amber-400 text-sm flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              مزايا البوتيك الحصرية
+            </h3>
+            <span className="text-[11px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-bold border border-amber-500/30">
+              إصدار مميز
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-300">
+            <div className="flex items-center gap-2.5 bg-slate-800/60 p-3 rounded-2xl border border-slate-700/30">
+              <span className="h-6 w-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">✓</span>
+              <span>تصاميم إيطالية أصلية 100% وأقمشة فاخرة منتقاة</span>
+            </div>
+            <div className="flex items-center gap-2.5 bg-slate-800/60 p-3 rounded-2xl border border-slate-700/30">
+              <span className="h-6 w-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">✓</span>
+              <span>شحن وتوصيل فوري لكافة الوجهات بأمان تام</span>
+            </div>
+            <div className="flex items-center gap-2.5 bg-slate-800/60 p-3 rounded-2xl border border-slate-700/30">
+              <span className="h-6 w-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">✓</span>
+              <span>ضمان الجودة والاستبدال وتتبع حالة الطلبات</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1196,17 +1305,8 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
               exit={{ scale: 0.95, opacity: 0 }}
               className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl relative"
             >
-              {/* Product Modal Top Actions: Delete Product & Close Button */}
-              <div className="absolute top-4 left-4 flex items-center gap-2 z-30">
-                <button 
-                  type="button"
-                  onClick={() => handleDeleteProduct(selectedProduct.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md hover:shadow-lg transition-all cursor-pointer"
-                  title="حذف هذا المنتج نهائياً من المتجر"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>حذف المنتج</span>
-                </button>
+              {/* Product Modal Top Action: Close Button for Users */}
+              <div className="absolute top-4 left-4 z-30">
                 <button 
                   type="button"
                   onClick={() => {
@@ -1571,8 +1671,8 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                     </div>
                   )}
 
-                  {/* Buy Actions */}
-                  <div className="pt-2 space-y-3">
+                  {/* Buy Actions & Wishlist Button */}
+                  <div className="pt-2 flex flex-col sm:flex-row gap-3">
                     <button
                       disabled={selectedProduct.stock === 0}
                       onClick={() => {
@@ -1583,10 +1683,23 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                         );
                         setSelectedProduct(null);
                       }}
-                      className="w-full py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold transition-all flex items-center justify-center gap-2 shadow-lg"
+                      className="flex-1 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
                     >
                       <ShoppingBag className="w-5 h-5" />
                       إضافة إلى سلة الشراء
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleWishlist(selectedProduct.id)}
+                      className={`px-4 py-3.5 rounded-xl border font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        isInWishlist(selectedProduct.id)
+                          ? "bg-red-50 text-red-600 border-red-300 shadow-xs"
+                          : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                      }`}
+                    >
+                      <Heart className={`w-4 h-4 ${isInWishlist(selectedProduct.id) ? "fill-red-500 text-red-500" : "text-slate-500"}`} />
+                      <span>{isInWishlist(selectedProduct.id) ? "في أمنياتي" : "أضف إلى أمنياتي"}</span>
                     </button>
                   </div>
 
@@ -1656,26 +1769,29 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                             ))}
                           </div>
 
-                          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs">
-                            <button
-                              type="button"
-                              onClick={() => setIsReviewAdmin(false)}
-                              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all ${
-                                !isReviewAdmin ? "bg-white text-slate-900 shadow-xs" : "text-slate-500"
-                              }`}
-                            >
-                              صفة العميل
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setIsReviewAdmin(true)}
-                              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all ${
-                                isReviewAdmin ? "bg-amber-500 text-slate-950 font-bold shadow-xs" : "text-slate-500"
-                              }`}
-                            >
-                              صفة الإدارة / Admin
-                            </button>
-                          </div>
+                          {/* Admin toggle appears ONLY when logged in as admin */}
+                          {isAdmin && (
+                            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs">
+                              <button
+                                type="button"
+                                onClick={() => setIsReviewAdmin(false)}
+                                className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all ${
+                                  !isReviewAdmin ? "bg-white text-slate-900 shadow-xs" : "text-slate-500"
+                                }`}
+                              >
+                                صفة العميل
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setIsReviewAdmin(true)}
+                                className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all ${
+                                  isReviewAdmin ? "bg-amber-500 text-slate-950 font-bold shadow-xs" : "text-slate-500"
+                                }`}
+                              >
+                                صفة الإدارة / Admin
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex flex-col sm:flex-row gap-2">
@@ -1683,7 +1799,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                             type="text"
                             value={reviewerName}
                             onChange={(e) => setReviewerName(e.target.value)}
-                            placeholder={isReviewAdmin ? "اسم المشرف (مثال: كامل أبو سمرة)" : "اسمك الكريم..."}
+                            placeholder={isAdmin && isReviewAdmin ? "اسم المشرف (مثال: Amir Lamay)" : "اسمك الكريم..."}
                             className="w-full sm:w-1/3 px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
                           />
                           <input
@@ -1695,7 +1811,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                           />
                           <button
                             onClick={() => handleAddReview(selectedProduct.id)}
-                            className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-all shrink-0"
+                            className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-all shrink-0 cursor-pointer"
                           >
                             أرسل التقييم
                           </button>
@@ -1703,6 +1819,60 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                       </div>
                     )}
                   </div>
+
+                  {/* Suggestions from the same category */}
+                  {(() => {
+                    const sameCatProds = products.filter(
+                      p => p.category_id === selectedProduct.category_id && p.id !== selectedProduct.id && !p.is_archived
+                    ).slice(0, 4);
+
+                    if (sameCatProds.length === 0) return null;
+
+                    return (
+                      <div className="border-t border-slate-100 pt-5 mt-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                            <Sparkles className="w-4 h-4 text-amber-500" />
+                            <span>اقتراحات مميزة من نفس القسم ({selectedProduct.category_name}):</span>
+                          </h4>
+                          <span className="text-[11px] text-slate-400">بأحدث الأسعار والخصومات</span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                          {sameCatProds.map(sug => {
+                            const sugDiscount = sug.discount_percentage || (sug.compare_at_price && sug.compare_at_price > sug.price ? Math.round(((sug.compare_at_price - sug.price) / sug.compare_at_price) * 100) : 0);
+                            return (
+                              <div
+                                key={sug.id}
+                                onClick={() => {
+                                  setSelectedProduct(sug);
+                                  setActiveImageIdx(0);
+                                  setSelectedSize(sug.sizes[0]);
+                                  setSelectedColor(sug.colors[0]);
+                                }}
+                                className="bg-slate-50 hover:bg-amber-500/10 border border-slate-200/80 hover:border-amber-500/50 rounded-2xl p-2 cursor-pointer transition-all flex flex-col group text-right"
+                              >
+                                <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-slate-100 mb-1.5">
+                                  <img src={sug.image_url} alt={sug.product_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                  {sugDiscount > 0 && (
+                                    <span className="absolute top-1 left-1 bg-red-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md">
+                                      خصم {sugDiscount}%
+                                    </span>
+                                  )}
+                                </div>
+                                <h5 className="text-[11px] font-bold text-slate-900 line-clamp-1 group-hover:text-amber-600">{sug.product_name}</h5>
+                                <div className="flex items-baseline gap-1 mt-1">
+                                  <span className="text-xs font-black text-amber-600">{sug.price.toFixed(2)} ج.م</span>
+                                  {sug.compare_at_price && (
+                                    <span className="text-[9px] text-slate-400 line-through">{sug.compare_at_price.toFixed(2)} ج.م</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -2653,8 +2823,36 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                  {/* Price */}
+                {/* Description & Specifications directly below product name */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    تفاصيل ووصف المنتج: *
+                  </label>
+                  <textarea
+                    rows={2}
+                    required
+                    value={newProdDescription}
+                    onChange={(e) => setNewProdDescription(e.target.value)}
+                    placeholder="شرح مميزات وتصميم واستخدامات هذا المنتج الفاخر..."
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    مواصفات وخامة التصنيع (المواصفات):
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={newProdSpecifications}
+                    onChange={(e) => setNewProdSpecifications(e.target.value)}
+                    placeholder="الخامة: 100% صوف إيطالي | البطانة: حرير | بلد الصنع: إيطاليا | العناية: تنظيف جاف..."
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Price and Compare Price side by side in one row */}
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-700">
                       السعر (ج.م): *
@@ -2670,7 +2868,6 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                     />
                   </div>
 
-                  {/* Compare Price */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-700">
                       السعر قبل الخصم (ج.م):
@@ -2684,8 +2881,10 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
                     />
                   </div>
+                </div>
 
-                  {/* Discount percentage */}
+                {/* Discount percentage and Stock side by side in one row */}
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-red-600">
                       نسبة الخصم (%):
@@ -2701,7 +2900,6 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                     />
                   </div>
 
-                  {/* Stock */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-700">
                       الكمية بالمخزون: *
@@ -2717,24 +2915,33 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                   </div>
                 </div>
 
-                {/* SKU and Image URL */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-slate-700">
-                      رمز المنتج (SKU):
-                    </label>
+                {/* Image Upload Button above Image URL input */}
+                <div className="space-y-2">
+                  <label className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-500/40 rounded-xl font-bold text-xs cursor-pointer transition-all shadow-xs">
+                    <Upload className="w-4 h-4 text-amber-600" />
+                    <span>رفع صورة المنتج مباشرة من الهاتف / الجهاز</span>
                     <input
-                      type="text"
-                      value={newProdSku}
-                      onChange={(e) => setNewProdSku(e.target.value)}
-                      placeholder="مثال: PRD-BLZ-09"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            if (ev.target?.result) {
+                              setNewProdImageUrl(ev.target.result as string);
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
                     />
-                  </div>
+                  </label>
 
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-700">
-                      رابط صورة المنتج (URL):
+                      أو رابط صورة المنتج (URL):
                     </label>
                     <input
                       type="url"
@@ -2744,6 +2951,25 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
                     />
                   </div>
+                  {newProdImageUrl && (
+                    <div className="relative h-20 w-24 rounded-xl overflow-hidden border border-slate-200 shadow-xs">
+                      <img src={newProdImageUrl} alt="Preview" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                </div>
+
+                {/* SKU Code */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    رمز المنتج (SKU):
+                  </label>
+                  <input
+                    type="text"
+                    value={newProdSku}
+                    onChange={(e) => setNewProdSku(e.target.value)}
+                    placeholder="مثال: PRD-BLZ-09"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
                 </div>
 
                 {/* Quick Preset Images Helper */}
@@ -2828,35 +3054,6 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                   </div>
                 </div>
 
-                {/* Description */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-700">
-                    تفاصيل ووصف المنتج: *
-                  </label>
-                  <textarea
-                    rows={2}
-                    required
-                    value={newProdDescription}
-                    onChange={(e) => setNewProdDescription(e.target.value)}
-                    placeholder="شرح مميزات وتصميم واستخدامات هذا المنتج الفاخر..."
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-
-                {/* Specifications */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-700">
-                    مواصفات وخامة التصنيع (المواصفات):
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={newProdSpecifications}
-                    onChange={(e) => setNewProdSpecifications(e.target.value)}
-                    placeholder="الخامة: 100% صوف إيطالي | البطانة: حرير | بلد الصنع: إيطاليا | العناية: تنظيف جاف..."
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-
                 {/* Actions */}
                 <div className="pt-2 flex gap-3">
                   <button
@@ -2877,6 +3074,78 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Wishlist Sliding Drawer */}
+      <AnimatePresence>
+        {isWishlistOpen && (
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex justify-end">
+            <div className="absolute inset-0" onClick={() => setIsWishlistOpen(false)}></div>
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="relative bg-white w-full max-w-md h-full flex flex-col shadow-2xl z-10 text-right"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                <button 
+                  onClick={() => setIsWishlistOpen(false)}
+                  className="p-2 rounded-full hover:bg-slate-100 text-slate-500 transition-all cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-slate-900 text-base">قائمة أمنياتي</h3>
+                  <div className="h-8 w-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center">
+                    <Heart className="w-4 h-4 fill-red-500 text-red-500" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                {wishlist.length === 0 ? (
+                  <div className="text-center py-16 space-y-3">
+                    <div className="h-16 w-16 rounded-full bg-red-50 text-red-300 flex items-center justify-center mx-auto">
+                      <Heart className="w-8 h-8" />
+                    </div>
+                    <p className="text-slate-600 font-bold text-sm">قائمة أمنياتك فارغة حالياً</p>
+                    <p className="text-slate-400 text-xs">اضغط على رمز القلب عند أي منتج لحفظه ومشاهدته مباشرة دون عناء البحث!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {products.filter(p => wishlist.includes(p.id)).map(favProd => (
+                      <div key={favProd.id} className="flex items-center gap-3 bg-slate-50 border border-slate-200/80 p-3 rounded-2xl">
+                        <img src={favProd.image_url} alt={favProd.product_name} className="w-16 h-16 rounded-xl object-cover bg-white shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-xs font-bold text-slate-900 truncate">{favProd.product_name}</h4>
+                          <span className="text-xs font-black text-amber-600 block mt-0.5">{favProd.price.toFixed(2)} ج.م</span>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <button
+                            onClick={() => {
+                              handleAddToCart(favProd);
+                              setIsWishlistOpen(false);
+                            }}
+                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-lg shadow-xs"
+                          >
+                            شراء
+                          </button>
+                          <button
+                            onClick={() => toggleWishlist(favProd.id)}
+                            className="text-[10px] text-red-500 hover:text-red-700 text-center"
+                          >
+                            حذف
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </motion.div>
           </div>
         )}

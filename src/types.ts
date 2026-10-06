@@ -113,6 +113,10 @@ export interface CompletedOrder {
   timestamp: number;
   usedPurchaseCode?: string;
   usedCouponCode?: string;
+  customerId?: number;
+  customerUsername?: string;
+  isGuestSession?: boolean;
+  userId?: number | string;
 }
 
 export interface ActivityLog {
