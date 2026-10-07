@@ -54,6 +54,8 @@ interface StoreFrontProps {
     heroTitle: string;
     heroSubtitle: string;
     heroBgImage?: string;
+    topMarqueeText?: string;
+    featuredPopupProductId?: number | null;
   };
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
@@ -905,30 +907,39 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
   return (
     <div className="w-full bg-slate-50 min-h-screen text-slate-800 font-sans" dir="rtl">
       {/* 1. Header Hero section */}
-      <div className="relative overflow-hidden bg-slate-900 text-white border-b border-amber-500/30">
+      <div className="relative overflow-hidden bg-slate-950 text-white border-b border-amber-500/30 min-h-[300px] sm:min-h-[420px] flex items-center">
+        {/* Vivid background image with optimized mobile/desktop display */}
         <div 
-          className="absolute inset-0 bg-cover bg-center opacity-30" 
-          style={{ backgroundImage: `url('${siteConfig.heroBgImage || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200"}')` }}
+          className="absolute inset-0 bg-cover bg-center opacity-85 transition-opacity" 
+          style={{ 
+            backgroundImage: `url('${siteConfig.heroBgImage || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200"}')`,
+            backgroundSize: "cover",
+            backgroundPosition: "center center"
+          }}
         ></div>
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/80 to-transparent"></div>
         
-        <div className="relative max-w-7xl mx-auto px-6 py-12 lg:py-16 flex flex-col items-start justify-center">
-          <div className="text-right space-y-4 max-w-2xl">
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold">
+        {/* Directional gradients so background image remains vivid across the section */}
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/60 to-transparent"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-slate-950/40"></div>
+        
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-16 w-full flex flex-col items-start justify-center">
+          {/* Glassmorphic backdrop container ensuring text is 100% crisp and readable */}
+          <div className="text-right space-y-3.5 max-w-2xl bg-slate-950/75 sm:bg-slate-950/70 backdrop-blur-md p-5 sm:p-8 rounded-3xl border border-white/15 shadow-2xl">
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/25 border border-amber-500/50 text-amber-300 text-xs font-bold">
               <Sparkles className="w-3.5 h-3.5" />
               متجر الملابس والإكسسوارات الفاخرة
             </span>
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight font-sans">
+            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white leading-tight font-sans">
               {siteConfig.heroTitle}
             </h1>
-            <p className="text-slate-300 text-sm sm:text-base lg:text-lg leading-relaxed">
+            <p className="text-slate-200 text-xs sm:text-base lg:text-lg leading-relaxed font-medium">
               {siteConfig.heroSubtitle}
             </p>
             {siteConfig.showDevCreditAtTop && (
-              <div className="pt-2 flex flex-wrap gap-4 text-xs text-slate-400">
-                <div className="flex items-center gap-1.5 bg-slate-800/60 px-3.5 py-1.5 rounded-lg border border-slate-700/50">
+              <div className="pt-2 flex flex-wrap gap-4 text-xs text-slate-300">
+                <div className="flex items-center gap-1.5 bg-slate-900/80 px-3.5 py-1.5 rounded-lg border border-slate-700/60">
                   <span>الجهة الإشرافية:</span>
-                  <strong className="text-white">{siteConfig.developerCredit}</strong>
+                  <strong className="text-amber-300">{siteConfig.developerCredit}</strong>
                 </div>
               </div>
             )}
@@ -937,62 +948,22 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
       </div>
 
       {/* 2. Products Catalog Area */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         
-        {/* Featured Products Slow Marquee Ticker */}
+        {/* Featured Products Marquee Ticker (Moves on mobile and desktop) */}
         {marqueeProducts.length > 0 && (
-          <div className="mb-6 sm:mb-8 bg-slate-950 border border-amber-500/30 rounded-3xl p-3.5 sm:p-4 shadow-xl overflow-hidden group">
-            <div className="flex items-center justify-between mb-2.5 px-2">
-              <span className="flex items-center gap-2 text-xs font-bold text-amber-400">
+          <div className="mb-6 sm:mb-8 bg-slate-950 border border-amber-500/30 rounded-3xl p-3 sm:p-4 shadow-xl overflow-hidden group">
+            <div className="flex items-center justify-between mb-2 px-2">
+              <span className="flex items-center gap-2 text-xs sm:text-sm font-bold text-amber-400">
                 <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
                 شريط المنتجات المختارة والعروض الحصرية:
               </span>
-              <span className="text-[10px] sm:text-[11px] text-slate-400">
-                (يتحرك ببطء • يقف عند المرور • اضغط للدخول على المنتج)
-              </span>
             </div>
 
-            {/* Mobile View: 3 items in square aspect ratio */}
-            <div className="grid grid-cols-3 gap-2 sm:hidden py-1">
-              {marqueeProducts.slice(0, 3).map((item) => {
-                const hasDiscount = item.discount_percentage || (item.compare_at_price && item.compare_at_price > item.price);
-                const discountVal = item.discount_percentage || (item.compare_at_price ? Math.round(((item.compare_at_price - item.price) / item.compare_at_price) * 100) : 0);
-
-                return (
-                  <div
-                    key={`mob-marquee-${item.id}`}
-                    onClick={() => {
-                      setSelectedProduct(item);
-                      setActiveImageIdx(0);
-                      onAddActivity("VIEW_MARQUEE_PRODUCT", `الدخول المباشر على المنتج المختار "${item.product_name}".`);
-                    }}
-                    className="relative aspect-square rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 hover:border-amber-500/60 p-1.5 flex flex-col justify-between cursor-pointer group shadow-md"
-                  >
-                    <div className="relative w-full h-[62%] rounded-xl overflow-hidden bg-slate-800">
-                      <img src={item.image_url} alt={item.product_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                      {hasDiscount ? (
-                        <span className="absolute top-1 left-1 bg-red-600 text-white text-[8px] font-black px-1 rounded">
-                          %{discountVal}-
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="text-center overflow-hidden pt-0.5">
-                      <h4 className="text-[10px] font-bold text-white truncate leading-tight">
-                        {item.product_name}
-                      </h4>
-                      <span className="text-[10px] font-black text-amber-400 block">
-                        {item.price.toFixed(0)} ج.م
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Desktop View: Scrolling Marquee */}
-            <div className="hidden sm:block relative w-full overflow-hidden select-none py-1">
-              <div className="animate-marquee gap-4 flex w-max">
-                {[...marqueeProducts, ...marqueeProducts].map((item, idx) => {
+            {/* Continuous Moving Marquee on both mobile & desktop */}
+            <div className="relative w-full overflow-hidden select-none py-1">
+              <div className="animate-marquee gap-3 sm:gap-4 flex w-max">
+                {[...marqueeProducts, ...marqueeProducts, ...marqueeProducts].map((item, idx) => {
                   const hasDiscount = item.discount_percentage || (item.compare_at_price && item.compare_at_price > item.price);
                   const discountVal = item.discount_percentage || (item.compare_at_price ? Math.round(((item.compare_at_price - item.price) / item.compare_at_price) * 100) : 0);
 
@@ -1002,33 +973,34 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                       onClick={() => {
                         setSelectedProduct(item);
                         setActiveImageIdx(0);
-                        onAddActivity("VIEW_MARQUEE_PRODUCT", `الدخول المباشر على المنتج المختارة "${item.product_name}" من الشريط المتحرك.`);
+                        onAddActivity("VIEW_MARQUEE_PRODUCT", `الدخول المباشر على المنتج المختار "${item.product_name}".`);
                       }}
-                      className="flex items-center gap-3 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/60 p-2.5 rounded-2xl cursor-pointer transition-all shadow-md shrink-0 min-w-[230px] sm:min-w-[260px] max-w-[280px]"
+                      className="flex sm:flex-row flex-col items-center gap-2 sm:gap-3 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/60 p-2 sm:p-2.5 rounded-2xl cursor-pointer transition-all shadow-md shrink-0 w-[110px] sm:min-w-[260px] sm:max-w-[280px]"
                     >
-                      <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl overflow-hidden shrink-0 bg-slate-800">
-                        <img src={item.image_url} alt={item.product_name} className="w-full h-full object-cover" />
+                      {/* Square image on mobile, rectangular thumbnail on desktop */}
+                      <div className="relative w-full aspect-square sm:aspect-auto sm:w-14 sm:h-14 rounded-xl overflow-hidden shrink-0 bg-slate-800">
+                        <img src={item.image_url} alt={item.product_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                         {hasDiscount ? (
-                          <span className="absolute top-0 left-0 bg-red-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-br-md">
+                          <span className="absolute top-1 left-1 bg-red-600 text-white text-[8px] sm:text-[9px] font-black px-1 sm:px-1.5 py-0.5 rounded">
                             %{discountVal}-
                           </span>
                         ) : null}
                       </div>
 
-                      <div className="flex-1 text-right overflow-hidden">
-                        <h4 className="text-xs font-bold text-white truncate max-w-[150px] sm:max-w-[170px]">
+                      <div className="w-full text-center sm:text-right overflow-hidden">
+                        <h4 className="text-[10px] sm:text-xs font-bold text-white truncate leading-tight">
                           {item.product_name}
                         </h4>
-                        <span className="text-[10px] text-slate-400 block truncate">
+                        <span className="hidden sm:block text-[10px] text-slate-400 truncate">
                           {item.category_name}
                         </span>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs font-black text-amber-400">
-                            {item.price.toFixed(2)} ج.م
+                        <div className="flex items-center justify-center sm:justify-start gap-1 sm:gap-2 mt-0.5">
+                          <span className="text-[10px] sm:text-xs font-black text-amber-400">
+                            {item.price.toFixed(0)} ج.م
                           </span>
                           {item.compare_at_price && (
-                            <span className="text-[10px] text-slate-500 line-through">
-                              {item.compare_at_price.toFixed(2)} ج.م
+                            <span className="text-[8px] sm:text-[10px] text-slate-500 line-through">
+                              {item.compare_at_price.toFixed(0)}
                             </span>
                           )}
                         </div>
@@ -1041,87 +1013,99 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
           </div>
         )}
 
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8 pb-6 border-b border-slate-200">
-          {/* Categories Tab */}
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => {
-                setSelectedCategory(null);
-                onAddActivity("FILTER_CATEGORY", "عرض كافة فئات المنتجات.");
-              }}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                selectedCategory === null 
-                  ? "bg-slate-900 text-white shadow-md" 
-                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
-              }`}
-            >
-              الكل
-            </button>
-            {SAMPLE_CATEGORIES.map(cat => (
-              <button
-                key={cat.id}
-                onClick={() => {
-                  setSelectedCategory(cat.id);
-                  onAddActivity("FILTER_CATEGORY", `فلترة المنتجات حسب تصنيف "${cat.category_name}".`);
+        {/* Categories Dropdown and In-Category Search Bar directly below Marquee */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-3 sm:p-4 mb-6 sm:mb-8 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3 sm:gap-4">
+          {/* Categories Dropdown */}
+          <div className="flex items-center gap-2.5 w-full md:w-auto">
+            <span className="text-xs font-bold text-slate-700 whitespace-nowrap">
+              الأقسام:
+            </span>
+            <div className="relative flex-1 md:w-56">
+              <select
+                value={selectedCategory === null ? "all" : selectedCategory}
+                onChange={(e) => {
+                  const val = e.target.value === "all" ? null : Number(e.target.value);
+                  setSelectedCategory(val);
+                  onAddActivity("FILTER_CATEGORY", val === null ? "عرض كافة الأقسام" : `فلترة حسب قسم ${val}`);
                 }}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                  selectedCategory === cat.id 
-                    ? "bg-slate-900 text-white shadow-md" 
-                    : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
-                }`}
+                className="w-full appearance-none px-3.5 py-2.5 pr-8 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer transition-all"
               >
-                {cat.category_name}
-              </button>
-            ))}
+                <option value="all">كافة الأقسام (الكل)</option>
+                {SAMPLE_CATEGORIES.map(cat => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.category_name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
           </div>
 
-          {/* Search, Sort and Add Product controls */}
-          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          {/* Search box inside selected category with search button */}
+          <div className="flex items-center gap-2 w-full md:flex-1 md:max-w-md">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="ابحث عن منتج معين في القسم المختار..."
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all placeholder:text-slate-400"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => onAddActivity("SEARCH_PRODUCTS", `البحث في القسم عن: "${searchQuery}"`)}
+              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0 cursor-pointer"
+            >
+              <Search className="w-3.5 h-3.5 text-amber-400" />
+              <span>بحث</span>
+            </button>
+          </div>
+
+          {/* Wishlist and Controls (Old search next to wishlist is removed) */}
+          <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
             {/* Wishlist Trigger Button */}
             <button
               onClick={() => setIsWishlistOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
               title="عرض قائمة أمنياتي"
             >
               <Heart className="w-4 h-4 fill-red-500 text-red-500" />
               <span>أمنياتي ({wishlist.length})</span>
             </button>
 
+            {/* Sorting select */}
+            <select
+              value={sortBy}
+              onChange={(e: any) => setSortBy(e.target.value)}
+              className="px-3 py-2.5 border border-slate-300 bg-slate-50 hover:bg-slate-100 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+            >
+              <option value="default">الترتيب الافتراضي</option>
+              <option value="price-asc">السعر: الأقل أولاً</option>
+              <option value="price-desc">السعر: الأعلى أولاً</option>
+              <option value="rating">الأعلى تقييماً</option>
+            </select>
+
             {/* Add Product Button (Admin Only) */}
             {isAdmin && (
               <button
                 onClick={() => setIsAddProductModalOpen(true)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm shadow-sm transition-all shrink-0 cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-sm transition-all shrink-0 cursor-pointer"
                 title="إضافة منتج جديد للمتجر"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
-                <span>أضف منتج</span>
+                <span className="hidden sm:inline">أضف منتج</span>
               </button>
             )}
-
-            <div className="relative flex-1 md:flex-initial min-w-[200px]">
-              <span className="absolute inset-y-0 right-3 flex items-center text-slate-400">
-                <Search className="w-4 h-4" />
-              </span>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ابحث عن الملابس، الأحجام، SKU..."
-                className="w-full pl-4 pr-10 py-2 border border-slate-200 bg-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
-              />
-            </div>
-
-            <select
-              value={sortBy}
-              onChange={(e: any) => setSortBy(e.target.value)}
-              className="px-3 py-2 border border-slate-200 bg-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-            >
-              <option value="default">الترتيب الافتراضي</option>
-              <option value="price-asc">السعر: من الأقل للأعلى</option>
-              <option value="price-desc">السعر: من الأعلى للأقل</option>
-              <option value="rating">التقييم: الأعلى أولاً</option>
-            </select>
           </div>
         </div>
 
@@ -1138,7 +1122,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
               <motion.div
                 layout
                 key={product.id}
-                className="bg-white rounded-xl sm:rounded-2xl border border-slate-100 overflow-hidden shadow-xs sm:shadow-sm hover:shadow-xl hover:border-amber-500/30 transition-all flex flex-col group relative"
+                className="bg-white rounded-xl sm:rounded-2xl border border-slate-100 overflow-hidden shadow-xs sm:shadow-sm hover:shadow-2xl hover:border-amber-500/40 hover:-translate-y-1.5 transition-all duration-300 flex flex-col group relative"
               >
                 {/* Product image container */}
                 <div 
@@ -1152,7 +1136,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                   <img
                     src={product.image_url}
                     alt={product.product_name}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-108"
                     referrerPolicy="no-referrer"
                   />
                   
@@ -1167,6 +1151,23 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                       <span>%{discountPercent}-</span>
                     </span>
                   ) : null}
+
+                  {/* Floating Available Sizes Overlay on hover */}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/95 via-slate-900/80 to-transparent p-1.5 sm:p-2.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-end z-20 pointer-events-none">
+                    <span className="text-[8px] sm:text-[11px] font-bold text-amber-300 mb-0.5 sm:mb-1">
+                      المقاسات المتاحة:
+                    </span>
+                    <div className="flex flex-wrap items-center justify-center gap-0.5 sm:gap-1">
+                      {(product.sizes && product.sizes.length > 0 ? product.sizes : ["S", "M", "L", "XL"]).map((sz) => (
+                        <span 
+                          key={sz} 
+                          className="px-1.5 sm:px-2 py-0.5 bg-white/20 backdrop-blur-md rounded text-[8px] sm:text-[10px] font-black text-white border border-white/30"
+                        >
+                          {sz}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
 
                   {/* Quick Wishlist Heart Icon on Card */}
                   <button
@@ -3118,25 +3119,35 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                 ) : (
                   <div className="space-y-3">
                     {products.filter(p => wishlist.includes(p.id)).map(favProd => (
-                      <div key={favProd.id} className="flex items-center gap-3 bg-slate-50 border border-slate-200/80 p-3 rounded-2xl">
-                        <img src={favProd.image_url} alt={favProd.product_name} className="w-16 h-16 rounded-xl object-cover bg-white shrink-0" />
+                      <div 
+                        key={favProd.id} 
+                        onClick={() => {
+                          setSelectedProduct(favProd);
+                          setActiveImageIdx(0);
+                          setIsWishlistOpen(false);
+                          onAddActivity("VIEW_WISHLIST_PRODUCT", `الانتقال المباشر لصفحة المنتج "${favProd.product_name}" من قائمة أمنياتي.`);
+                        }}
+                        className="flex items-center gap-3 bg-slate-50 hover:bg-amber-50/50 border border-slate-200/80 hover:border-amber-400 p-3 rounded-2xl cursor-pointer transition-all group"
+                      >
+                        <img src={favProd.image_url} alt={favProd.product_name} className="w-16 h-16 rounded-xl object-cover bg-white shrink-0 group-hover:scale-105 transition-transform" />
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-xs font-bold text-slate-900 truncate">{favProd.product_name}</h4>
+                          <h4 className="text-xs font-bold text-slate-900 group-hover:text-amber-600 truncate transition-colors">{favProd.product_name}</h4>
                           <span className="text-xs font-black text-amber-600 block mt-0.5">{favProd.price.toFixed(2)} ج.م</span>
+                          <span className="text-[10px] text-slate-400 block mt-0.5">اضغط لفتح صفحة ومواصفات المنتج</span>
                         </div>
-                        <div className="flex flex-col gap-1.5">
+                        <div className="flex flex-col gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => {
                               handleAddToCart(favProd);
                               setIsWishlistOpen(false);
                             }}
-                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-lg shadow-xs"
+                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-lg shadow-xs cursor-pointer"
                           >
                             شراء
                           </button>
                           <button
                             onClick={() => toggleWishlist(favProd.id)}
-                            className="text-[10px] text-red-500 hover:text-red-700 text-center"
+                            className="text-[10px] text-red-500 hover:text-red-700 text-center cursor-pointer"
                           >
                             حذف
                           </button>

@@ -68,7 +68,9 @@ export default function App() {
     showDevCreditAtTop: false,
     heroTitle: "بوتيك الأناقة العصرية",
     heroSubtitle: "تصاميم فاخرة منتقاة بعناية للملابسو الفساتين الكلاسيكية والإكسسوارات المتميزة، صُممت لتمنحك إطلالة فريدة تعبر عن هويتك الراقية.",
-    heroBgImage: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200"
+    heroBgImage: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200",
+    topMarqueeText: "بوتيك الأناقة العصرية: شحن مجاني لكافة الطلبات فوق 500 ج.م • عروض وخصومات حصرية متجددة يومياً • خدمة عملاء ودعم متواصل 24/7",
+    featuredPopupProductId: null as number | null
   });
 
   // Winter Star-Snow effect toggle
@@ -156,7 +158,39 @@ export default function App() {
   const [tempHeroTitle, setTempHeroTitle] = useState(siteConfig.heroTitle);
   const [tempHeroSubtitle, setTempHeroSubtitle] = useState(siteConfig.heroSubtitle);
   const [tempHeroBgImage, setTempHeroBgImage] = useState(siteConfig.heroBgImage);
+  const [tempTopMarqueeText, setTempTopMarqueeText] = useState(siteConfig.topMarqueeText || "بوتيك الأناقة العصرية: شحن مجاني لكافة الطلبات فوق 500 ج.م • عروض وخصومات حصرية متجددة يومياً • خدمة عملاء ودعم متواصل 24/7");
+  const [tempFeaturedPopupProductId, setTempFeaturedPopupProductId] = useState<number | null>(siteConfig.featuredPopupProductId || null);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
+
+  // Entrance Featured Product Modal & Follow-up Register Modal
+  const [showFeaturedProductModal, setShowFeaturedProductModal] = useState(true);
+  const [showFollowupRegisterModal, setShowFollowupRegisterModal] = useState(false);
+  const [activePopupProduct, setActivePopupProduct] = useState<Product | null>(null);
+
+  // Auto-pick popup product from settings or randomly from catalog
+  useEffect(() => {
+    if (products.length > 0) {
+      if (siteConfig.featuredPopupProductId) {
+        const found = products.find(p => p.id === siteConfig.featuredPopupProductId && !p.is_archived);
+        if (found) {
+          setActivePopupProduct(found);
+          return;
+        }
+      }
+      const available = products.filter(p => !p.is_archived);
+      if (available.length > 0) {
+        const randomIndex = Math.floor(Math.random() * available.length);
+        setActivePopupProduct(available[randomIndex]);
+      }
+    }
+  }, [products, siteConfig.featuredPopupProductId]);
+
+  const handleCloseFeaturedProductModal = () => {
+    setShowFeaturedProductModal(false);
+    if (!currentUser) {
+      setShowFollowupRegisterModal(true);
+    }
+  };
 
   // Coupon Creation form states
   const [newCouponCode, setNewCouponCode] = useState("");
@@ -276,6 +310,8 @@ export default function App() {
       setTempHeroTitle(siteConfig.heroTitle);
       setTempHeroSubtitle(siteConfig.heroSubtitle);
       setTempHeroBgImage(siteConfig.heroBgImage || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200");
+      setTempTopMarqueeText(siteConfig.topMarqueeText || "بوتيك الأناقة العصرية: شحن مجاني لكافة الطلبات فوق 500 ج.م • عروض وخصومات حصرية متجددة يومياً • خدمة عملاء ودعم متواصل 24/7");
+      setTempFeaturedPopupProductId(siteConfig.featuredPopupProductId || null);
       setShowSettingsModal(true);
     } else {
       setAdminPasswordInput("");
@@ -296,6 +332,8 @@ export default function App() {
       setTempHeroTitle(siteConfig.heroTitle);
       setTempHeroSubtitle(siteConfig.heroSubtitle);
       setTempHeroBgImage(siteConfig.heroBgImage || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200");
+      setTempTopMarqueeText(siteConfig.topMarqueeText || "بوتيك الأناقة العصرية: شحن مجاني لكافة الطلبات فوق 500 ج.م • عروض وخصومات حصرية متجددة يومياً • خدمة عملاء ودعم متواصل 24/7");
+      setTempFeaturedPopupProductId(siteConfig.featuredPopupProductId || null);
       setShowSettingsModal(true);
       handleAddActivity("ADMIN_UNLOCK", "تم تسجيل دخول المسؤول إلى لوحة إعدادات البوتيك بنجاح.");
     } else {
@@ -312,13 +350,15 @@ export default function App() {
       showDevCreditAtTop: !!tempShowDevCreditAtTop,
       heroTitle: tempHeroTitle.trim() || siteConfig.heroTitle,
       heroSubtitle: tempHeroSubtitle.trim() || siteConfig.heroSubtitle,
-      heroBgImage: tempHeroBgImage.trim() || siteConfig.heroBgImage
+      heroBgImage: tempHeroBgImage.trim() || siteConfig.heroBgImage,
+      topMarqueeText: tempTopMarqueeText.trim(),
+      featuredPopupProductId: tempFeaturedPopupProductId ? Number(tempFeaturedPopupProductId) : null
     };
     setSiteConfig(newConfig);
     syncDataToCloud("siteConfig", newConfig);
     setSaveSuccessNotice(true);
     setTimeout(() => setSaveSuccessNotice(false), 2500);
-    handleAddActivity("UPDATE_SITE_CONFIG", "تم تحديث نصوص وهوية الموقع وخلفية الواجهة ومزامنتها سحابياً.");
+    handleAddActivity("UPDATE_SITE_CONFIG", "تم تحديث نصوص وهوية الموقع وخلفية الواجهة والشريط المتحرك ومزامنتها سحابياً.");
   };
 
   // Coupon handlers
@@ -752,6 +792,19 @@ export default function App() {
   return (
     <div className="w-full min-h-screen bg-slate-900 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950" dir="rtl">
       
+      {/* Top Announcement Moving Marquee Bar (Above Settings and Site Name) */}
+      {siteConfig.topMarqueeText && (
+        <div className="bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-slate-950 font-black text-xs sm:text-sm py-1.5 sm:py-2 overflow-hidden border-b border-amber-600/30 select-none shadow-xs">
+          <div className="animate-marquee flex items-center whitespace-nowrap gap-8">
+            <span>{siteConfig.topMarqueeText}</span>
+            <span className="text-amber-800">•</span>
+            <span>{siteConfig.topMarqueeText}</span>
+            <span className="text-amber-800">•</span>
+            <span>{siteConfig.topMarqueeText}</span>
+          </div>
+        </div>
+      )}
+
       {/* Top Header Navigation */}
       <div className="bg-slate-950/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-40 px-4 sm:px-6 py-3.5">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
@@ -1239,9 +1292,48 @@ export default function App() {
                     )}
                   </div>
 
+                  {/* Moving Marquee Ticker at the Top */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-300">
+                      الشريط المتحرك:
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={tempTopMarqueeText}
+                      onChange={(e) => setTempTopMarqueeText(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none leading-relaxed"
+                      placeholder="اكتب هنا أي نص تريده ليظهر ويتحرك في الشريط العلوي أعلى اسم الموقع والإعدادات..."
+                    />
+                    <span className="text-[10px] text-slate-400 block">
+                      يتحرك هذا الشريط باستمرار في أعلى الصفحة فوق الإعدادات واسم الموقع.
+                    </span>
+                  </div>
+
+                  {/* Featured Popup Product Selection */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-300">
+                      المنتج المحدد في الشاشة المنبثقة الترحيبية:
+                    </label>
+                    <select
+                      value={tempFeaturedPopupProductId === null ? "" : tempFeaturedPopupProductId}
+                      onChange={(e) => setTempFeaturedPopupProductId(e.target.value ? Number(e.target.value) : null)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none cursor-pointer"
+                    >
+                      <option value="">عشوائي (يتم اختيار منتج عشوائي تلقائياً للزوار عند الدخول)</option>
+                      {products.filter(p => !p.is_archived).map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.product_name} - {p.price} ج.م ({p.category_name})
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-[10px] text-slate-400 block">
+                      يظهر هذا المنتج للعملاء في نافذة منبثقة مميزة فور دخول الموقع مع السعر ونسبة الخصم.
+                    </span>
+                  </div>
+
                   <button
                     type="submit"
-                    className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md"
+                    className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer"
                   >
                     حفظ التعديلات
                   </button>
@@ -2312,6 +2404,315 @@ export default function App() {
               <div className="p-4 bg-slate-900/40 border-t border-slate-800 text-[10px] text-slate-500 text-center">
                 مبني لتسجيل عمليات الإدارة وفق متطلبات Amir Lamay
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 1. Initial Entry Featured Product Modal */}
+      <AnimatePresence>
+        {showFeaturedProductModal && activePopupProduct && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0" onClick={handleCloseFeaturedProductModal}></div>
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative bg-slate-900 border border-amber-500/40 rounded-3xl p-5 sm:p-7 max-w-md w-full shadow-2xl text-right z-10 space-y-4 max-h-[92vh] overflow-y-auto"
+            >
+              {/* Header with Close X */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <button
+                  type="button"
+                  onClick={handleCloseFeaturedProductModal}
+                  className="p-1.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
+                  title="إغلاق (X)"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs sm:text-sm font-bold text-amber-400 flex items-center gap-1.5 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+                    <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                    عرض خاص وحصري اليوم!
+                  </span>
+                </div>
+              </div>
+
+              {/* Product Presentation */}
+              <div className="space-y-4">
+                <div className="relative w-full h-52 sm:h-60 rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-inner group">
+                  <img
+                    src={activePopupProduct.image_url}
+                    alt={activePopupProduct.product_name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  {(activePopupProduct.discount_percentage || (activePopupProduct.compare_at_price && activePopupProduct.compare_at_price > activePopupProduct.price)) && (
+                    <div className="absolute top-3 left-3 bg-red-600 text-white font-black text-xs sm:text-sm px-3 py-1 rounded-xl shadow-lg border border-red-400/40 animate-bounce">
+                      %{activePopupProduct.discount_percentage || Math.round(((activePopupProduct.compare_at_price! - activePopupProduct.price) / activePopupProduct.compare_at_price!) * 100)}- خصم
+                    </div>
+                  )}
+                  <span className="absolute bottom-3 right-3 bg-slate-950/80 backdrop-blur-sm text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg border border-amber-500/30">
+                    {activePopupProduct.category_name}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <h3 className="text-base sm:text-lg font-black text-white leading-snug">
+                    {activePopupProduct.product_name}
+                  </h3>
+                  <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
+                    {activePopupProduct.description}
+                  </p>
+                </div>
+
+                {/* Pricing & Discount */}
+                <div className="flex items-center justify-between bg-slate-950/70 p-3 rounded-2xl border border-slate-800">
+                  <div className="text-right">
+                    <span className="text-[11px] text-slate-400 block">السعر الحالي:</span>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xl font-black text-amber-400">
+                        {activePopupProduct.price.toFixed(0)} <span className="text-xs font-normal text-slate-300">ج.م</span>
+                      </span>
+                      {activePopupProduct.compare_at_price && (
+                        <span className="text-xs text-slate-500 line-through">
+                          {activePopupProduct.compare_at_price.toFixed(0)} ج.م
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {(activePopupProduct.discount_percentage || (activePopupProduct.compare_at_price && activePopupProduct.compare_at_price > activePopupProduct.price)) && (
+                    <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-xl">
+                      وفر {((activePopupProduct.compare_at_price || activePopupProduct.price) - activePopupProduct.price).toFixed(0)} ج.م
+                    </span>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCart(prev => {
+                        const existing = prev.find(item => item.product.id === activePopupProduct.id);
+                        if (existing) {
+                          return prev.map(item => item.product.id === activePopupProduct.id ? { ...item, quantity: item.quantity + 1 } : item);
+                        }
+                        return [...prev, { product: activePopupProduct, quantity: 1, selectedSize: "M", selectedColor: "أسود" }];
+                      });
+                      setIsCartOpen(true);
+                      handleCloseFeaturedProductModal();
+                    }}
+                    className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <ShoppingBag className="w-4 h-4" />
+                    <span>أضف للسلة وتسوق الآن</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCloseFeaturedProductModal}
+                    className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+                  >
+                    إغلاق
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 2. Follow-up Register & Sign-in Modal that appears after the featured product modal closes */}
+      <AnimatePresence>
+        {showFollowupRegisterModal && !currentUser && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0" onClick={() => setShowFollowupRegisterModal(false)}></div>
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 max-w-md w-full shadow-2xl text-right z-10 space-y-4 max-h-[92vh] overflow-y-auto"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <button
+                  type="button"
+                  onClick={() => setShowFollowupRegisterModal(false)}
+                  className="p-1.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
+                  title="إغلاق (X)"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-white text-base">سجل الآن أو قم بتسجيل الدخول</h3>
+                  <div className="h-8 w-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Mode Tabs */}
+              <div className="flex border-b border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserAuthMode("register");
+                    setUserAuthError("");
+                    setUserAuthSuccess("");
+                  }}
+                  className={`flex-1 py-2 text-xs font-bold text-center border-b-2 transition-all ${
+                    userAuthMode === "register"
+                      ? "border-amber-500 text-amber-400"
+                      : "border-transparent text-slate-400 hover:text-white"
+                  }`}
+                >
+                  سجل الآن (حساب جديد)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserAuthMode("login");
+                    setUserAuthError("");
+                    setUserAuthSuccess("");
+                  }}
+                  className={`flex-1 py-2 text-xs font-bold text-center border-b-2 transition-all ${
+                    userAuthMode === "login"
+                      ? "border-amber-500 text-amber-400"
+                      : "border-transparent text-slate-400 hover:text-white"
+                  }`}
+                >
+                  تسجيل الدخول
+                </button>
+              </div>
+
+              {userAuthError && (
+                <div className="p-3 bg-red-500/20 border border-red-500/40 rounded-xl text-red-400 text-xs font-semibold">
+                  {userAuthError}
+                </div>
+              )}
+
+              {userAuthSuccess && (
+                <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-400 text-xs font-bold flex items-center gap-2">
+                  <Check className="w-4 h-4" />
+                  {userAuthSuccess}
+                </div>
+              )}
+
+              {/* Form inside modal */}
+              {userAuthMode === "register" ? (
+                <form
+                  onSubmit={async (e) => {
+                    await handleUserRegister(e);
+                    setTimeout(() => setShowFollowupRegisterModal(false), 1200);
+                  }}
+                  className="space-y-3 text-right"
+                >
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300">
+                      اسم المستخدم <span className="text-amber-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={authUsername}
+                      onChange={e => setAuthUsername(e.target.value)}
+                      placeholder="أدخل اسم المستخدم..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300">
+                      كلمة المرور <span className="text-amber-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showAuthPassword ? "text" : "password"}
+                        value={authPassword}
+                        onChange={e => setAuthPassword(e.target.value)}
+                        placeholder="أدخل كلمة المرور..."
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white font-mono"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAuthPassword(!showAuthPassword)}
+                        className="absolute left-2.5 top-2.5 text-slate-400 hover:text-white"
+                      >
+                        {showAuthPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300">الاسم الكامل</label>
+                    <input
+                      type="text"
+                      value={authFullName}
+                      onChange={e => setAuthFullName(e.target.value)}
+                      placeholder="الاسم ثلاثي أو ثنائي"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300">رقم الهاتف</label>
+                    <input
+                      type="text"
+                      value={authPhone}
+                      onChange={e => setAuthPhone(e.target.value)}
+                      placeholder="01014955160"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer mt-2"
+                  >
+                    سجل الآن وتفعيل الحساب فوراً
+                  </button>
+                </form>
+              ) : (
+                <form
+                  onSubmit={async (e) => {
+                    await handleUserLogin(e);
+                    setTimeout(() => setShowFollowupRegisterModal(false), 1000);
+                  }}
+                  className="space-y-3 text-right"
+                >
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300">اسم المستخدم</label>
+                    <input
+                      type="text"
+                      value={authUsername}
+                      onChange={e => setAuthUsername(e.target.value)}
+                      placeholder="اسم المستخدم المسجل"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-300">كلمة المرور</label>
+                    <input
+                      type="password"
+                      value={authPassword}
+                      onChange={e => setAuthPassword(e.target.value)}
+                      placeholder="كلمة المرور"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer mt-2"
+                  >
+                    تسجيل الدخول الآن
+                  </button>
+                </form>
+              )}
             </motion.div>
           </div>
         )}
