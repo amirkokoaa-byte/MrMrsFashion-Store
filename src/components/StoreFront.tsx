@@ -56,6 +56,8 @@ interface StoreFrontProps {
     heroBgImage?: string;
     topMarqueeText?: string;
     featuredPopupProductId?: number | null;
+    promoBannerImage?: string;
+    promoBannerLink?: string;
   };
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
@@ -1108,6 +1110,41 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
             )}
           </div>
         </div>
+
+        {/* Clickable Promo Banner (Uploaded from settings/coupons tab with redirect destination link) */}
+        {siteConfig.promoBannerImage && (
+          <div className="mb-6 sm:mb-8 rounded-2xl sm:rounded-3xl overflow-hidden border border-amber-500/30 shadow-md group relative">
+            {siteConfig.promoBannerLink ? (
+              <a
+                href={siteConfig.promoBannerLink}
+                target={siteConfig.promoBannerLink.startsWith("http") ? "_blank" : "_self"}
+                rel="noopener noreferrer"
+                onClick={() => onAddActivity("CLICK_PROMO_BANNER", `نقر العميل على البانر الترويجي والتوجه إلى: ${siteConfig.promoBannerLink}`)}
+                className="block relative overflow-hidden cursor-pointer"
+                title="اضغط للتوجه إلى الرابط المخصص"
+              >
+                <img
+                  src={siteConfig.promoBannerImage}
+                  alt="عرض ترويجي خاص"
+                  className="w-full max-h-56 sm:max-h-72 object-cover transition-transform duration-500 group-hover:scale-102"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
+                  <span className="text-white text-xs sm:text-sm font-bold bg-amber-500 text-slate-950 px-3 py-1 rounded-xl shadow-md">
+                    اضغط هنا للاستفادة من العرض والتوجه مباشرة ↗
+                  </span>
+                </div>
+              </a>
+            ) : (
+              <div className="relative overflow-hidden">
+                <img
+                  src={siteConfig.promoBannerImage}
+                  alt="عرض ترويجي خاص"
+                  className="w-full max-h-56 sm:max-h-72 object-cover"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Product Cards Grid: 3 items per row on mobile with scaled compact sizing and clear details */}
         <div className="grid grid-cols-3 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-6 lg:gap-8">

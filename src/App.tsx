@@ -41,7 +41,10 @@ import {
   Eye,
   EyeOff,
   Cloud,
-  Wifi
+  Wifi,
+  Image,
+  Link2,
+  ExternalLink
 } from "lucide-react";
 import StoreFront from "./components/StoreFront";
 import DbDesigner from "./components/DbDesigner";
@@ -70,7 +73,9 @@ export default function App() {
     heroSubtitle: "تصاميم فاخرة منتقاة بعناية للملابسو الفساتين الكلاسيكية والإكسسوارات المتميزة، صُممت لتمنحك إطلالة فريدة تعبر عن هويتك الراقية.",
     heroBgImage: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200",
     topMarqueeText: "بوتيك الأناقة العصرية: شحن مجاني لكافة الطلبات فوق 500 ج.م • عروض وخصومات حصرية متجددة يومياً • خدمة عملاء ودعم متواصل 24/7",
-    featuredPopupProductId: null as number | null
+    featuredPopupProductId: null as number | null,
+    promoBannerImage: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=1200",
+    promoBannerLink: ""
   });
 
   // Winter Star-Snow effect toggle
@@ -160,6 +165,8 @@ export default function App() {
   const [tempHeroBgImage, setTempHeroBgImage] = useState(siteConfig.heroBgImage);
   const [tempTopMarqueeText, setTempTopMarqueeText] = useState(siteConfig.topMarqueeText || "بوتيك الأناقة العصرية: شحن مجاني لكافة الطلبات فوق 500 ج.م • عروض وخصومات حصرية متجددة يومياً • خدمة عملاء ودعم متواصل 24/7");
   const [tempFeaturedPopupProductId, setTempFeaturedPopupProductId] = useState<number | null>(siteConfig.featuredPopupProductId || null);
+  const [tempPromoBannerImage, setTempPromoBannerImage] = useState(siteConfig.promoBannerImage || "");
+  const [tempPromoBannerLink, setTempPromoBannerLink] = useState(siteConfig.promoBannerLink || "");
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
 
   // Entrance Featured Product Modal & Follow-up Register Modal
@@ -312,6 +319,8 @@ export default function App() {
       setTempHeroBgImage(siteConfig.heroBgImage || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200");
       setTempTopMarqueeText(siteConfig.topMarqueeText || "بوتيك الأناقة العصرية: شحن مجاني لكافة الطلبات فوق 500 ج.م • عروض وخصومات حصرية متجددة يومياً • خدمة عملاء ودعم متواصل 24/7");
       setTempFeaturedPopupProductId(siteConfig.featuredPopupProductId || null);
+      setTempPromoBannerImage(siteConfig.promoBannerImage || "");
+      setTempPromoBannerLink(siteConfig.promoBannerLink || "");
       setShowSettingsModal(true);
     } else {
       setAdminPasswordInput("");
@@ -334,6 +343,8 @@ export default function App() {
       setTempHeroBgImage(siteConfig.heroBgImage || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200");
       setTempTopMarqueeText(siteConfig.topMarqueeText || "بوتيك الأناقة العصرية: شحن مجاني لكافة الطلبات فوق 500 ج.م • عروض وخصومات حصرية متجددة يومياً • خدمة عملاء ودعم متواصل 24/7");
       setTempFeaturedPopupProductId(siteConfig.featuredPopupProductId || null);
+      setTempPromoBannerImage(siteConfig.promoBannerImage || "");
+      setTempPromoBannerLink(siteConfig.promoBannerLink || "");
       setShowSettingsModal(true);
       handleAddActivity("ADMIN_UNLOCK", "تم تسجيل دخول المسؤول إلى لوحة إعدادات البوتيك بنجاح.");
     } else {
@@ -352,13 +363,15 @@ export default function App() {
       heroSubtitle: tempHeroSubtitle.trim() || siteConfig.heroSubtitle,
       heroBgImage: tempHeroBgImage.trim() || siteConfig.heroBgImage,
       topMarqueeText: tempTopMarqueeText.trim(),
-      featuredPopupProductId: tempFeaturedPopupProductId ? Number(tempFeaturedPopupProductId) : null
+      featuredPopupProductId: tempFeaturedPopupProductId ? Number(tempFeaturedPopupProductId) : null,
+      promoBannerImage: tempPromoBannerImage.trim(),
+      promoBannerLink: tempPromoBannerLink.trim()
     };
     setSiteConfig(newConfig);
     syncDataToCloud("siteConfig", newConfig);
     setSaveSuccessNotice(true);
     setTimeout(() => setSaveSuccessNotice(false), 2500);
-    handleAddActivity("UPDATE_SITE_CONFIG", "تم تحديث نصوص وهوية الموقع وخلفية الواجهة والشريط المتحرك ومزامنتها سحابياً.");
+    handleAddActivity("UPDATE_SITE_CONFIG", "تم تحديث نصوص وهوية الموقع وخلفية الواجهة والشريط المتحرك وصورة رابط العروض ومزامنتها سحابياً.");
   };
 
   // Coupon handlers
@@ -1051,133 +1064,175 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Settings Modal (Tabbed Navigation) */}
+      {/* Settings Modal with Persistent Visible Sidebar */}
       <AnimatePresence>
         {showSettingsModal && (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-5">
             <div className="absolute inset-0" onClick={() => setShowSettingsModal(false)}></div>
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
+              initial={{ scale: 0.96, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="relative bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 max-w-2xl w-full shadow-2xl text-right z-10 space-y-5 max-h-[90vh] overflow-y-auto"
+              exit={{ scale: 0.96, opacity: 0 }}
+              className="relative bg-slate-900 border border-slate-800 rounded-3xl max-w-4xl w-full shadow-2xl text-right z-10 flex flex-col max-h-[92vh] overflow-hidden"
             >
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center justify-between border-b border-slate-800 p-4 sm:p-5 bg-slate-950/50">
                 <button 
                   onClick={() => setShowSettingsModal(false)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer transition-colors"
+                  title="إغلاق"
                 >
                   <X className="w-5 h-5" />
                 </button>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <div>
                     <h3 className="font-bold text-white text-base">لوحة إعدادات وإدارة البوتيك</h3>
-                    <p className="text-[11px] text-slate-400">إدارة الهوية، الشتاء، المنتجات، وأكواد الخصم والشراء</p>
+                    <p className="text-[11px] text-slate-400">تحكم كامل بالهوية، الأكواد، البانرات الترويجية، وطرق الدفع والعملاء</p>
                   </div>
-                  <div className="h-9 w-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <div className="h-10 w-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shadow-inner">
                     <Settings className="w-5 h-5" />
                   </div>
                 </div>
               </div>
 
-              {/* Navigation Tabs Bar */}
-              <div className="flex border-b border-slate-800 gap-1 overflow-x-auto pb-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setSettingsTab("site")}
-                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
-                    settingsTab === "site" 
-                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Settings className="w-3.5 h-3.5" />
-                  هوية الموقع
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSettingsTab("coupons")}
-                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
-                    settingsTab === "coupons" 
-                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Tag className="w-3.5 h-3.5" />
-                  أكواد الخصم والشراء
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSettingsTab("marquee_winter")}
-                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
-                    settingsTab === "marquee_winter" 
-                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Snowflake className="w-3.5 h-3.5 text-blue-400" />
-                  موسم الشتاء والشريط
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSettingsTab("archived")}
-                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
-                    settingsTab === "archived" 
-                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Archive className="w-3.5 h-3.5 text-amber-500" />
-                  المؤرشفة ({products.filter(p => p.is_archived).length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTempPaymentSettings(paymentSettings);
-                    setSettingsTab("payment");
-                  }}
-                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
-                    settingsTab === "payment" 
-                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <CreditCard className="w-3.5 h-3.5 text-amber-400" />
-                  طرق الدفع
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSettingsTab("customers")}
-                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
-                    settingsTab === "customers" 
-                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5 text-blue-400" />
-                  العملاء ({customers.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSettingsTab("database")}
-                  className={`px-3 py-2 rounded-t-xl font-bold flex items-center gap-1.5 whitespace-nowrap transition-all ${
-                    settingsTab === "database" 
-                      ? "bg-slate-800 text-amber-400 border-b-2 border-amber-500" 
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Database className="w-3.5 h-3.5 text-emerald-400" />
-                  MySQL
-                </button>
-              </div>
+              {/* Main Content: Persistent Sidebar + Active Content */}
+              <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+                {/* Persistent Sidebar (Always Visible, Never Closed) */}
+                <div className="w-full md:w-60 bg-slate-950/90 border-b md:border-b-0 md:border-l border-slate-800 p-3 sm:p-4 flex flex-row md:flex-col gap-1.5 shrink-0 overflow-x-auto md:overflow-y-auto">
+                  <div className="hidden md:block pb-2 mb-1 border-b border-slate-800/80">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block pr-2">
+                      أقسام الإعدادات
+                    </span>
+                  </div>
 
-              {saveSuccessNotice && (
-                <div className="bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-xs p-3 rounded-xl flex items-center gap-2">
-                  <Check className="w-4 h-4" />
-                  تم حفظ وتحديث البيانات بنجاح!
+                  <button
+                    type="button"
+                    onClick={() => setSettingsTab("site")}
+                    className={`w-full px-3.5 py-2.5 rounded-xl font-bold flex items-center justify-between gap-2 transition-all cursor-pointer text-xs ${
+                      settingsTab === "site" 
+                        ? "bg-amber-500 text-slate-950 shadow-md" 
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Settings className="w-4 h-4 shrink-0" />
+                      <span>هوية الموقع</span>
+                    </div>
+                    {settingsTab === "site" && <span className="w-1.5 h-1.5 rounded-full bg-slate-950 shrink-0"></span>}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSettingsTab("coupons")}
+                    className={`w-full px-3.5 py-2.5 rounded-xl font-bold flex items-center justify-between gap-2 transition-all cursor-pointer text-xs ${
+                      settingsTab === "coupons" 
+                        ? "bg-amber-500 text-slate-950 shadow-md" 
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Tag className="w-4 h-4 shrink-0" />
+                      <span>أكواد الخصم والشراء</span>
+                    </div>
+                    {settingsTab === "coupons" && <span className="w-1.5 h-1.5 rounded-full bg-slate-950 shrink-0"></span>}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSettingsTab("marquee_winter")}
+                    className={`w-full px-3.5 py-2.5 rounded-xl font-bold flex items-center justify-between gap-2 transition-all cursor-pointer text-xs ${
+                      settingsTab === "marquee_winter" 
+                        ? "bg-amber-500 text-slate-950 shadow-md" 
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Snowflake className={`w-4 h-4 shrink-0 ${settingsTab === "marquee_winter" ? "text-slate-950" : "text-blue-400"}`} />
+                      <span>موسم الشتاء والشريط</span>
+                    </div>
+                    {settingsTab === "marquee_winter" && <span className="w-1.5 h-1.5 rounded-full bg-slate-950 shrink-0"></span>}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSettingsTab("archived")}
+                    className={`w-full px-3.5 py-2.5 rounded-xl font-bold flex items-center justify-between gap-2 transition-all cursor-pointer text-xs ${
+                      settingsTab === "archived" 
+                        ? "bg-amber-500 text-slate-950 shadow-md" 
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Archive className={`w-4 h-4 shrink-0 ${settingsTab === "archived" ? "text-slate-950" : "text-amber-400"}`} />
+                      <span>المؤرشفة</span>
+                    </div>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${settingsTab === "archived" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"}`}>
+                      {products.filter(p => p.is_archived).length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTempPaymentSettings(paymentSettings);
+                      setSettingsTab("payment");
+                    }}
+                    className={`w-full px-3.5 py-2.5 rounded-xl font-bold flex items-center justify-between gap-2 transition-all cursor-pointer text-xs ${
+                      settingsTab === "payment" 
+                        ? "bg-amber-500 text-slate-950 shadow-md" 
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <CreditCard className="w-4 h-4 shrink-0" />
+                      <span>طرق الدفع</span>
+                    </div>
+                    {settingsTab === "payment" && <span className="w-1.5 h-1.5 rounded-full bg-slate-950 shrink-0"></span>}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSettingsTab("customers")}
+                    className={`w-full px-3.5 py-2.5 rounded-xl font-bold flex items-center justify-between gap-2 transition-all cursor-pointer text-xs ${
+                      settingsTab === "customers" 
+                        ? "bg-amber-500 text-slate-950 shadow-md" 
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Users className={`w-4 h-4 shrink-0 ${settingsTab === "customers" ? "text-slate-950" : "text-blue-400"}`} />
+                      <span>العملاء</span>
+                    </div>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${settingsTab === "customers" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"}`}>
+                      {customers.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSettingsTab("database")}
+                    className={`w-full px-3.5 py-2.5 rounded-xl font-bold flex items-center justify-between gap-2 transition-all cursor-pointer text-xs ${
+                      settingsTab === "database" 
+                        ? "bg-amber-500 text-slate-950 shadow-md" 
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Database className={`w-4 h-4 shrink-0 ${settingsTab === "database" ? "text-slate-950" : "text-emerald-400"}`} />
+                      <span>MySQL</span>
+                    </div>
+                    {settingsTab === "database" && <span className="w-1.5 h-1.5 rounded-full bg-slate-950 shrink-0"></span>}
+                  </button>
                 </div>
-              )}
+
+                {/* Tab Content Panel (Scrollable) */}
+                <div className="flex-1 p-5 sm:p-6 overflow-y-auto space-y-5">
+                  {saveSuccessNotice && (
+                    <div className="bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-xs p-3 rounded-xl flex items-center gap-2">
+                      <Check className="w-4 h-4" />
+                      تم حفظ وتحديث البيانات بنجاح!
+                    </div>
+                  )}
 
               {/* Tab 1: Site Identity & Text */}
               {settingsTab === "site" && (
@@ -1525,6 +1580,106 @@ export default function App() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Promo Banner Image & Link (Uploaded banner for users with destination redirect) */}
+                  <div className="bg-slate-950/80 p-4 rounded-2xl border border-amber-500/30 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                        <Image className="w-4 h-4 text-amber-400" />
+                        صورة العرض الترويجي للعملاء ورابط التوجه عند الضغط:
+                      </span>
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-bold">
+                        بانر الإعلانات
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      يمكنك هنا رفع أو تحديد صورة تظهر للمستخدم، وتحديد رابط التوجه المخصص الذي يمكن التوجه له عند الضغط على الصورة:
+                    </p>
+
+                    {/* Image URL & Upload Button */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-bold text-slate-300">
+                        صورة تظهر للمستخدم (رابط أو رفع من الهاتف/الجهاز):
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          value={tempPromoBannerImage}
+                          onChange={(e) => setTempPromoBannerImage(e.target.value)}
+                          placeholder="https://... أو اضغط رفع صورة"
+                          className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-amber-500"
+                        />
+                        <label className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 cursor-pointer flex items-center gap-1.5 shrink-0 transition-all">
+                          <Image className="w-3.5 h-3.5 text-amber-400" />
+                          <span>رفع صورة</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = (ev) => {
+                                  if (ev.target?.result) setTempPromoBannerImage(ev.target.result as string);
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Target Link input */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-bold text-slate-300">
+                        رابط التوجه عند الضغط على الصورة:
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={tempPromoBannerLink}
+                          onChange={(e) => setTempPromoBannerLink(e.target.value)}
+                          placeholder="اكتب أو الصق الرابط الذي سوف يتوجه له العميل..."
+                          className="w-full px-3 py-2 pl-8 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-mono focus:ring-2 focus:ring-amber-500"
+                          dir="ltr"
+                        />
+                        <Link2 className="w-4 h-4 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      </div>
+                      <span className="text-[10px] text-slate-500 block">
+                        عند الضغط على الصورة يمكن التوجه للرابط المسجل هنا مباشرة.
+                      </span>
+                    </div>
+
+                    {/* Preview Image */}
+                    {tempPromoBannerImage && (
+                      <div className="relative rounded-xl overflow-hidden border border-slate-800 mt-2 bg-slate-900">
+                        <img 
+                          src={tempPromoBannerImage} 
+                          alt="Banner Preview" 
+                          className="w-full max-h-40 object-cover rounded-xl" 
+                        />
+                        <div className="absolute bottom-2 right-2 bg-slate-950/85 px-2 py-0.5 rounded text-[10px] text-amber-300 flex items-center gap-1">
+                          <span>معاينة الصورة الحالية</span>
+                          {tempPromoBannerLink && <ExternalLink className="w-3 h-3 text-emerald-400" />}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Save Button for Promo Banner */}
+                    <div className="pt-1 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={(e) => handleSaveSettings(e)}
+                        className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>حفظ بيانات الصورة والرابط</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -2034,9 +2189,11 @@ export default function App() {
                   </button>
                 </div>
               )}
+                </div>
+              </div>
 
               {/* Logout & Quick Add */}
-              <div className="border-t border-slate-800 pt-3 flex items-center justify-between">
+              <div className="border-t border-slate-800 p-3 sm:px-5 flex items-center justify-between bg-slate-950/80">
                 <button
                   type="button"
                   onClick={() => {
@@ -2044,7 +2201,7 @@ export default function App() {
                     if (activeView !== "storefront") setActiveView("storefront");
                     setIsAddProductTriggered(true);
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500 text-amber-400 text-xs font-bold"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500 text-amber-400 text-xs font-bold transition-all cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   أضف منتج جديد
@@ -2057,7 +2214,7 @@ export default function App() {
                     setShowSettingsModal(false);
                     handleAddActivity("ADMIN_LOCK", "تم قفل لوحة الإعدادات وتسجيل خروج المسؤول.");
                   }}
-                  className="text-xs text-slate-500 hover:text-red-400 transition-all"
+                  className="text-xs text-slate-500 hover:text-red-400 transition-all cursor-pointer"
                 >
                   قفل الإعدادات والخروج
                 </button>
