@@ -315,6 +315,27 @@ export default function StoreFront({
     );
   };
 
+  // Instant calculation of price after discount when entering compare price or discount percentage
+  const updateDiscountedPrice = (compareVal: string, discountVal: string) => {
+    const compareNum = parseFloat(compareVal);
+    const discountNum = parseFloat(discountVal);
+    if (!isNaN(compareNum) && compareNum > 0 && !isNaN(discountNum) && discountNum >= 0 && discountNum <= 100) {
+      const discounted = compareNum * (1 - discountNum / 100);
+      const finalPrice = Math.round(discounted * 100) / 100;
+      setNewProdPrice(finalPrice.toString());
+    }
+  };
+
+  const handleComparePriceChange = (val: string) => {
+    setNewProdComparePrice(val);
+    updateDiscountedPrice(val, newProdDiscount);
+  };
+
+  const handleDiscountChange = (val: string) => {
+    setNewProdDiscount(val);
+    updateDiscountedPrice(newProdComparePrice, val);
+  };
+
   // Sync external add product trigger from top bar
   useEffect(() => {
     if (isAddProductOpen) {
@@ -1110,41 +1131,6 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
             )}
           </div>
         </div>
-
-        {/* Clickable Promo Banner (Uploaded from settings/coupons tab with redirect destination link) */}
-        {siteConfig.promoBannerImage && (
-          <div className="mb-6 sm:mb-8 rounded-2xl sm:rounded-3xl overflow-hidden border border-amber-500/30 shadow-md group relative">
-            {siteConfig.promoBannerLink ? (
-              <a
-                href={siteConfig.promoBannerLink}
-                target={siteConfig.promoBannerLink.startsWith("http") ? "_blank" : "_self"}
-                rel="noopener noreferrer"
-                onClick={() => onAddActivity("CLICK_PROMO_BANNER", `نقر العميل على البانر الترويجي والتوجه إلى: ${siteConfig.promoBannerLink}`)}
-                className="block relative overflow-hidden cursor-pointer"
-                title="اضغط للتوجه إلى الرابط المخصص"
-              >
-                <img
-                  src={siteConfig.promoBannerImage}
-                  alt="عرض ترويجي خاص"
-                  className="w-full max-h-56 sm:max-h-72 object-cover transition-transform duration-500 group-hover:scale-102"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-                  <span className="text-white text-xs sm:text-sm font-bold bg-amber-500 text-slate-950 px-3 py-1 rounded-xl shadow-md">
-                    اضغط هنا للاستفادة من العرض والتوجه مباشرة ↗
-                  </span>
-                </div>
-              </a>
-            ) : (
-              <div className="relative overflow-hidden">
-                <img
-                  src={siteConfig.promoBannerImage}
-                  alt="عرض ترويجي خاص"
-                  className="w-full max-h-56 sm:max-h-72 object-cover"
-                />
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Product Cards Grid: 3 items per row on mobile with scaled compact sizing and clear details */}
         <div className="grid grid-cols-3 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-6 lg:gap-8">
@@ -2889,11 +2875,48 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                   />
                 </div>
 
-                {/* Price and Compare Price side by side in one row */}
+                {/* Price and Compare Price with instant discount calculation */}
                 <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-700">
-                      السعر (ج.م): *
+                      السعر قبل الخصم (ج.م):
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={newProdComparePrice}
+                      onChange={(e) => handleComparePriceChange(e.target.value)}
+                      placeholder="240.00"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-red-600">
+                      نسبة الخصم (%):
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="99"
+                      value={newProdDiscount}
+                      onChange={(e) => handleDiscountChange(e.target.value)}
+                      placeholder="20"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-red-200 bg-red-50/40 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-red-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Discount percentage and Stock side by side in one row */}
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
+                      <span>السعر بعد الخصم (ج.م): *</span>
+                      {parseFloat(newProdComparePrice) > 0 && parseFloat(newProdDiscount) > 0 && (
+                        <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          محسوب لحظياً ✓
+                        </span>
+                      )}
                     </label>
                     <input
                       type="number"
@@ -2904,38 +2927,12 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
                       placeholder="180.00"
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
                     />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-slate-700">
-                      السعر قبل الخصم (ج.م):
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={newProdComparePrice}
-                      onChange={(e) => setNewProdComparePrice(e.target.value)}
-                      placeholder="240.00"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Discount percentage and Stock side by side in one row */}
-                <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-red-600">
-                      نسبة الخصم (%):
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="99"
-                      value={newProdDiscount}
-                      onChange={(e) => setNewProdDiscount(e.target.value)}
-                      placeholder="20"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-red-200 bg-red-50/40 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-red-500 focus:outline-none"
-                    />
+                    {parseFloat(newProdComparePrice) > 0 && parseFloat(newProdDiscount) > 0 && (
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-50/90 px-2 py-1 rounded-lg border border-emerald-200 mt-1">
+                        <Sparkles className="w-3 h-3 text-emerald-600 shrink-0" />
+                        <span>السعر بعد خصم {newProdDiscount}%: {newProdPrice || "0"} ج.م</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-1.5">
