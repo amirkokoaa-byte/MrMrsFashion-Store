@@ -2586,176 +2586,164 @@ export default function App() {
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative bg-slate-900 border border-amber-500/40 rounded-3xl p-5 sm:p-7 max-w-md w-full shadow-2xl text-right z-10 space-y-4 max-h-[92vh] overflow-y-auto"
+              className={siteConfig.promoBannerImage 
+                ? "relative bg-slate-900 border border-amber-500/30 rounded-3xl p-2 sm:p-2.5 max-w-lg w-full shadow-2xl z-10 overflow-hidden flex flex-col items-center max-h-[92vh]" 
+                : "relative bg-slate-900 border border-amber-500/40 rounded-3xl p-5 sm:p-7 max-w-md w-full shadow-2xl text-right z-10 space-y-4 max-h-[92vh] overflow-y-auto"
+              }
             >
-              {/* Header with Close X */}
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <button
-                  type="button"
-                  onClick={handleCloseFeaturedProductModal}
-                  className="p-1.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
-                  title="إغلاق (X)"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs sm:text-sm font-bold text-amber-400 flex items-center gap-1.5 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
-                    <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
-                    {siteConfig.promoBannerImage ? "إعلان ترويجي وعرض خاص!" : "عرض خاص وحصري اليوم!"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Uploaded Promo Banner or Featured Product */}
               {siteConfig.promoBannerImage ? (
-                <div className="space-y-4">
-                  <div className="relative w-full rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-inner group">
-                    {siteConfig.promoBannerLink ? (
-                      <a
-                        href={siteConfig.promoBannerLink}
-                        target={siteConfig.promoBannerLink.startsWith("http") ? "_blank" : "_self"}
-                        rel="noopener noreferrer"
-                        onClick={() => {
-                          handleAddActivity("CLICK_POPUP_BANNER", `نقر العميل على الإعلان المنبثق والتوجه إلى: ${siteConfig.promoBannerLink}`);
-                          handleCloseFeaturedProductModal();
-                        }}
-                        className="block cursor-pointer relative"
-                        title="اضغط للتوجه إلى رابط العرض المخصص"
-                      >
-                        <img
-                          src={siteConfig.promoBannerImage}
-                          alt="إعلان ترويجي منبثق"
-                          className="w-full max-h-80 sm:max-h-96 object-contain sm:object-cover group-hover:scale-102 transition-transform duration-300"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
-                          <span className="text-xs font-bold text-slate-950 bg-amber-400 px-3 py-1.5 rounded-xl shadow-md">
-                            اضغط للتوجه إلى العرض مباشرة ↗
-                          </span>
-                        </div>
-                      </a>
-                    ) : (
+                /* Pure Promo Banner Image Popup (No buttons, full image visibility, X button on the left only) */
+                <div className="relative w-full flex flex-col items-center">
+                  {/* Close button X on the left only */}
+                  <button
+                    type="button"
+                    onClick={handleCloseFeaturedProductModal}
+                    className="absolute top-2.5 left-2.5 z-30 p-2 rounded-full bg-slate-950/80 hover:bg-slate-900 text-slate-300 hover:text-white border border-slate-700/60 shadow-xl transition-all cursor-pointer backdrop-blur-md"
+                    title="إغلاق (X)"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+
+                  {siteConfig.promoBannerLink ? (
+                    <a
+                      href={siteConfig.promoBannerLink}
+                      target={siteConfig.promoBannerLink.startsWith("http") ? "_blank" : "_self"}
+                      rel="noopener noreferrer"
+                      onClick={() => {
+                        handleAddActivity("CLICK_POPUP_BANNER", `نقر العميل على الإعلان المنبثق والتوجه إلى: ${siteConfig.promoBannerLink}`);
+                        handleCloseFeaturedProductModal();
+                      }}
+                      className="relative block w-full rounded-2xl overflow-hidden cursor-pointer"
+                      title="اضغط على الصورة للتوجه إلى الرابط"
+                    >
                       <img
                         src={siteConfig.promoBannerImage}
-                        alt="إعلان ترويجي منبثق"
-                        className="w-full max-h-80 sm:max-h-96 object-contain sm:object-cover"
+                        alt="إعلان ترويجي وعرض خاص"
+                        className="w-full max-h-[82vh] object-contain rounded-2xl block mx-auto select-none"
                       />
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2.5 pt-1">
-                    {siteConfig.promoBannerLink ? (
-                      <a
-                        href={siteConfig.promoBannerLink}
-                        target={siteConfig.promoBannerLink.startsWith("http") ? "_blank" : "_self"}
-                        rel="noopener noreferrer"
-                        onClick={() => {
-                          handleAddActivity("CLICK_POPUP_BANNER", `نقر العميل على زر الإعلان المنبثق والتوجه إلى: ${siteConfig.promoBannerLink}`);
-                          handleCloseFeaturedProductModal();
-                        }}
-                        className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer text-center"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        <span>التوجه إلى رابط العرض ↗</span>
-                      </a>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleCloseFeaturedProductModal}
-                        className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <span>تصفح المتجر الآن</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleCloseFeaturedProductModal}
-                      className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
-                    >
-                      إغلاق
-                    </button>
-                  </div>
+                      {/* اعلان ترويجي وعرض خاص من الاسفل بشكل لا يؤثر علي وضوح الصورة */}
+                      <div className="absolute bottom-2.5 inset-x-0 flex justify-center pointer-events-none px-4">
+                        <span className="px-3.5 py-1 rounded-full bg-slate-950/65 backdrop-blur-md border border-amber-500/30 text-[11px] sm:text-xs font-bold text-amber-300 shadow-md">
+                          إعلان ترويجي وعرض خاص
+                        </span>
+                      </div>
+                    </a>
+                  ) : (
+                    <div className="relative w-full rounded-2xl overflow-hidden">
+                      <img
+                        src={siteConfig.promoBannerImage}
+                        alt="إعلان ترويجي وعرض خاص"
+                        className="w-full max-h-[82vh] object-contain rounded-2xl block mx-auto select-none"
+                      />
+                      {/* اعلان ترويجي وعرض خاص من الاسفل بشكل لا يؤثر علي وضوح الصورة */}
+                      <div className="absolute bottom-2.5 inset-x-0 flex justify-center pointer-events-none px-4">
+                        <span className="px-3.5 py-1 rounded-full bg-slate-950/65 backdrop-blur-md border border-amber-500/30 text-[11px] sm:text-xs font-bold text-amber-300 shadow-md">
+                          إعلان ترويجي وعرض خاص
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : activePopupProduct ? (
                 /* Product Presentation */
-                <div className="space-y-4">
-                  <div className="relative w-full h-52 sm:h-60 rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-inner group">
-                    <img
-                      src={activePopupProduct.image_url}
-                      alt={activePopupProduct.product_name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                    {(activePopupProduct.discount_percentage || (activePopupProduct.compare_at_price && activePopupProduct.compare_at_price > activePopupProduct.price)) && (
-                      <div className="absolute top-3 left-3 bg-red-600 text-white font-black text-xs sm:text-sm px-3 py-1 rounded-xl shadow-lg border border-red-400/40 animate-bounce">
-                        %{activePopupProduct.discount_percentage || Math.round(((activePopupProduct.compare_at_price! - activePopupProduct.price) / activePopupProduct.compare_at_price!) * 100)}- خصم
-                      </div>
-                    )}
-                    <span className="absolute bottom-3 right-3 bg-slate-950/80 backdrop-blur-sm text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg border border-amber-500/30">
-                      {activePopupProduct.category_name}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <h3 className="text-base sm:text-lg font-black text-white leading-snug">
-                      {activePopupProduct.product_name}
-                    </h3>
-                    <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
-                      {activePopupProduct.description}
-                    </p>
-                  </div>
-
-                  {/* Pricing & Discount */}
-                  <div className="flex items-center justify-between bg-slate-950/70 p-3 rounded-2xl border border-slate-800">
-                    <div className="text-right">
-                      <span className="text-[11px] text-slate-400 block">السعر الحالي:</span>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-xl font-black text-amber-400">
-                          {activePopupProduct.price.toFixed(0)} <span className="text-xs font-normal text-slate-300">ج.م</span>
-                        </span>
-                        {activePopupProduct.compare_at_price && (
-                          <span className="text-xs text-slate-500 line-through">
-                            {activePopupProduct.compare_at_price.toFixed(0)} ج.م
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {(activePopupProduct.discount_percentage || (activePopupProduct.compare_at_price && activePopupProduct.compare_at_price > activePopupProduct.price)) && (
-                      <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-xl">
-                        وفر {((activePopupProduct.compare_at_price || activePopupProduct.price) - activePopupProduct.price).toFixed(0)} ج.م
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2.5 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCart(prev => {
-                          const existing = prev.find(item => item.product.id === activePopupProduct.id);
-                          if (existing) {
-                            return prev.map(item => item.product.id === activePopupProduct.id ? { ...item, quantity: item.quantity + 1 } : item);
-                          }
-                          return [...prev, { product: activePopupProduct, quantity: 1, selectedSize: "M", selectedColor: "أسود" }];
-                        });
-                        setIsCartOpen(true);
-                        handleCloseFeaturedProductModal();
-                      }}
-                      className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <ShoppingBag className="w-4 h-4" />
-                      <span>أضف للسلة وتسوق الآن</span>
-                    </button>
+                <>
+                  {/* Header with Close X */}
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                     <button
                       type="button"
                       onClick={handleCloseFeaturedProductModal}
-                      className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+                      className="p-1.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
+                      title="إغلاق (X)"
                     >
-                      إغلاق
+                      <X className="w-5 h-5" />
                     </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs sm:text-sm font-bold text-amber-400 flex items-center gap-1.5 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+                        <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                        عرض خاص وحصري اليوم!
+                      </span>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="space-y-4">
+                    <div className="relative w-full h-52 sm:h-60 rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-inner group">
+                      <img
+                        src={activePopupProduct.image_url}
+                        alt={activePopupProduct.product_name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                      {(activePopupProduct.discount_percentage || (activePopupProduct.compare_at_price && activePopupProduct.compare_at_price > activePopupProduct.price)) && (
+                        <div className="absolute top-3 left-3 bg-red-600 text-white font-black text-xs sm:text-sm px-3 py-1 rounded-xl shadow-lg border border-red-400/40 animate-bounce">
+                          %{activePopupProduct.discount_percentage || Math.round(((activePopupProduct.compare_at_price! - activePopupProduct.price) / activePopupProduct.compare_at_price!) * 100)}- خصم
+                        </div>
+                      )}
+                      <span className="absolute bottom-3 right-3 bg-slate-950/80 backdrop-blur-sm text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg border border-amber-500/30">
+                        {activePopupProduct.category_name}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <h3 className="text-base sm:text-lg font-black text-white leading-snug">
+                        {activePopupProduct.product_name}
+                      </h3>
+                      <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
+                        {activePopupProduct.description}
+                      </p>
+                    </div>
+
+                    {/* Pricing & Discount */}
+                    <div className="flex items-center justify-between bg-slate-950/70 p-3 rounded-2xl border border-slate-800">
+                      <div className="text-right">
+                        <span className="text-[11px] text-slate-400 block">السعر الحالي:</span>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-xl font-black text-amber-400">
+                            {activePopupProduct.price.toFixed(0)} <span className="text-xs font-normal text-slate-300">ج.م</span>
+                          </span>
+                          {activePopupProduct.compare_at_price && (
+                            <span className="text-xs text-slate-500 line-through">
+                              {activePopupProduct.compare_at_price.toFixed(0)} ج.م
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {(activePopupProduct.discount_percentage || (activePopupProduct.compare_at_price && activePopupProduct.compare_at_price > activePopupProduct.price)) && (
+                        <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-xl">
+                          وفر {((activePopupProduct.compare_at_price || activePopupProduct.price) - activePopupProduct.price).toFixed(0)} ج.م
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCart(prev => {
+                            const existing = prev.find(item => item.product.id === activePopupProduct.id);
+                            if (existing) {
+                              return prev.map(item => item.product.id === activePopupProduct.id ? { ...item, quantity: item.quantity + 1 } : item);
+                            }
+                            return [...prev, { product: activePopupProduct, quantity: 1, selectedSize: "M", selectedColor: "أسود" }];
+                          });
+                          setIsCartOpen(true);
+                          handleCloseFeaturedProductModal();
+                        }}
+                        className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <ShoppingBag className="w-4 h-4" />
+                        <span>أضف للسلة وتسوق الآن</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCloseFeaturedProductModal}
+                        className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+                      >
+                        إغلاق
+                      </button>
+                    </div>
+                  </div>
+                </>
               ) : null}
             </motion.div>
           </div>
