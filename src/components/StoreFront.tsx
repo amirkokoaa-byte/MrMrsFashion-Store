@@ -58,6 +58,7 @@ interface StoreFrontProps {
     featuredPopupProductId?: number | null;
     promoBannerImage?: string;
     promoBannerLink?: string;
+    isPopupDisabled?: boolean;
   };
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
@@ -92,7 +93,7 @@ interface StoreFrontProps {
   onOpenRegisterModal: () => void;
 }
 
-export default function StoreFront({ 
+function StoreFrontComponent({ 
   siteConfig, 
   products,
   setProducts,
@@ -933,7 +934,7 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
       <div className="relative overflow-hidden bg-slate-950 text-white border-b border-amber-500/30 min-h-[300px] sm:min-h-[420px] flex items-center">
         {/* Vivid background image with optimized mobile/desktop display */}
         <div 
-          className="absolute inset-0 bg-cover bg-center opacity-85 transition-opacity" 
+          className="absolute inset-0 bg-cover bg-center transition-opacity" 
           style={{ 
             backgroundImage: `url('${siteConfig.heroBgImage || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200"}')`,
             backgroundSize: "cover",
@@ -941,26 +942,26 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
           }}
         ></div>
         
-        {/* Directional gradients so background image remains vivid across the section */}
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/60 to-transparent"></div>
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-slate-950/40"></div>
+        {/* Soft subtle translucent overlay so background image is fully clear and visible */}
+        <div className="absolute inset-0 bg-slate-950/25"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/45 via-transparent to-transparent"></div>
         
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-16 w-full flex flex-col items-start justify-center">
-          {/* Glassmorphic backdrop container ensuring text is 100% crisp and readable */}
-          <div className="text-right space-y-3.5 max-w-2xl bg-slate-950/75 sm:bg-slate-950/70 backdrop-blur-md p-5 sm:p-8 rounded-3xl border border-white/15 shadow-2xl">
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/25 border border-amber-500/50 text-amber-300 text-xs font-bold">
+          {/* Transparent backdrop container so the uploaded background image is clearly visible behind the text */}
+          <div className="text-right space-y-3.5 max-w-2xl bg-transparent p-2 sm:p-4">
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-950/50 backdrop-blur-sm border border-amber-400/60 text-amber-300 text-xs font-bold shadow-md">
               <Sparkles className="w-3.5 h-3.5" />
               متجر الملابس والإكسسوارات الفاخرة
             </span>
-            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white leading-tight font-sans">
+            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white leading-tight font-sans drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]">
               {siteConfig.heroTitle}
             </h1>
-            <p className="text-slate-200 text-xs sm:text-base lg:text-lg leading-relaxed font-medium">
+            <p className="text-white text-xs sm:text-base lg:text-lg leading-relaxed font-semibold drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
               {siteConfig.heroSubtitle}
             </p>
             {siteConfig.showDevCreditAtTop && (
-              <div className="pt-2 flex flex-wrap gap-4 text-xs text-slate-300">
-                <div className="flex items-center gap-1.5 bg-slate-900/80 px-3.5 py-1.5 rounded-lg border border-slate-700/60">
+              <div className="pt-2 flex flex-wrap gap-4 text-xs text-white">
+                <div className="flex items-center gap-1.5 bg-slate-950/60 backdrop-blur-sm px-3.5 py-1.5 rounded-lg border border-slate-700/60 shadow-md">
                   <span>الجهة الإشرافية:</span>
                   <strong className="text-amber-300">{siteConfig.developerCredit}</strong>
                 </div>
@@ -3226,3 +3227,6 @@ ${appliedCoupon ? `🏷️ كود الخصم: ${appliedCoupon.coupon_code} (خص
     </div>
   );
 }
+
+const StoreFront = React.memo(StoreFrontComponent);
+export default StoreFront;

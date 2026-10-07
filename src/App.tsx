@@ -60,53 +60,69 @@ import {
 } from "./dbSchemaData";
 import { subscribeToRealtimeNode, syncDataToCloud } from "./firebase";
 import { hashPassword, maskPassword } from "./utils/crypto";
+import { loadLocalData, saveLocalData, cacheImagesInBrowser } from "./utils/cacheManager";
 
 export default function App() {
   const [activeView, setActiveView] = useState<"storefront" | "designer">("storefront");
   
-  // Dynamic Site Configuration editable via Gear Settings
-  const [siteConfig, setSiteConfig] = useState({
-    siteName: "mr mars store",
-    developerCredit: "بإشراف المطور: Amir Lamay",
-    showDevCreditAtTop: false,
-    heroTitle: "بوتيك الأناقة العصرية",
-    heroSubtitle: "تصاميم فاخرة منتقاة بعناية للملابسو الفساتين الكلاسيكية والإكسسوارات المتميزة، صُممت لتمنحك إطلالة فريدة تعبر عن هويتك الراقية.",
-    heroBgImage: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200",
-    topMarqueeText: "بوتيك الأناقة العصرية: شحن مجاني لكافة الطلبات فوق 500 ج.م • عروض وخصومات حصرية متجددة يومياً • خدمة عملاء ودعم متواصل 24/7",
-    featuredPopupProductId: null as number | null,
-    promoBannerImage: "",
-    promoBannerLink: ""
-  });
+  // Dynamic Site Configuration editable via Gear Settings (Loaded from cache for 0ms startup)
+  const [siteConfig, setSiteConfig] = useState(() => 
+    loadLocalData("siteConfig", {
+      siteName: "mr mars store",
+      developerCredit: "بإشراف المطور: Amir Lamay",
+      showDevCreditAtTop: false,
+      heroTitle: "بوتيك الأناقة العصرية",
+      heroSubtitle: "تصاميم فاخرة منتقاة بعناية للملابسو الفساتين الكلاسيكية والإكسسوارات المتميزة، صُممت لتمنحك إطلالة فريدة تعبر عن هويتك الراقية.",
+      heroBgImage: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200",
+      topMarqueeText: "بوتيك الأناقة العصرية: شحن مجاني لكافة الطلبات فوق 500 ج.م • عروض وخصومات حصرية متجددة يومياً • خدمة عملاء ودعم متواصل 24/7",
+      featuredPopupProductId: null as number | null,
+      promoBannerImage: "",
+      promoBannerLink: "",
+      isPopupDisabled: false
+    })
+  );
 
   // Winter Star-Snow effect toggle
   const [isWinterSnowEnabled, setIsWinterSnowEnabled] = useState(true);
 
-  // Products Database state
-  const [products, setProducts] = useState<Product[]>(SAMPLE_PRODUCTS.map(p => ({
-    ...p,
-    discount_percentage: p.compare_at_price ? Math.round(((p.compare_at_price - p.price) / p.compare_at_price) * 100) : undefined,
-    is_featured_marquee: true,
-    is_archived: false,
-    reviews_count: 0
-  })));
+  // Products Database state (Loaded from browser cache for instant speed)
+  const [products, setProducts] = useState<Product[]>(() => 
+    loadLocalData("products", SAMPLE_PRODUCTS.map(p => ({
+      ...p,
+      discount_percentage: p.compare_at_price ? Math.round(((p.compare_at_price - p.price) / p.compare_at_price) * 100) : undefined,
+      is_featured_marquee: true,
+      is_archived: false,
+      reviews_count: 0
+    })))
+  );
 
-  // Coupons state
-  const [coupons, setCoupons] = useState<Coupon[]>(SAMPLE_COUPONS);
+  // Coupons state (Loaded from cache)
+  const [coupons, setCoupons] = useState<Coupon[]>(() => 
+    loadLocalData("coupons", SAMPLE_COUPONS)
+  );
 
-  // Single-use 100% Purchase Codes state
-  const [purchaseCodes, setPurchaseCodes] = useState<PurchaseCode[]>(INITIAL_PURCHASE_CODES);
+  // Single-use 100% Purchase Codes state (Loaded from cache)
+  const [purchaseCodes, setPurchaseCodes] = useState<PurchaseCode[]>(() => 
+    loadLocalData("purchaseCodes", INITIAL_PURCHASE_CODES)
+  );
 
   // Shopping Cart state isolated per user account (empty by default)
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
 
-  // Egyptian Payment Methods Settings state
-  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(DEFAULT_PAYMENT_SETTINGS);
-  const [tempPaymentSettings, setTempPaymentSettings] = useState<PaymentSettings>(DEFAULT_PAYMENT_SETTINGS);
+  // Egyptian Payment Methods Settings state (Loaded from cache)
+  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(() => 
+    loadLocalData("paymentSettings", DEFAULT_PAYMENT_SETTINGS)
+  );
+  const [tempPaymentSettings, setTempPaymentSettings] = useState<PaymentSettings>(() => 
+    loadLocalData("paymentSettings", DEFAULT_PAYMENT_SETTINGS)
+  );
   const [paymentSaveSuccess, setPaymentSaveSuccess] = useState(false);
 
-  // Customers & Accounts Database state
-  const [customers, setCustomers] = useState<AppCustomer[]>(INITIAL_CUSTOMERS);
+  // Customers & Accounts Database state (Loaded from cache)
+  const [customers, setCustomers] = useState<AppCustomer[]>(() => 
+    loadLocalData("customers", INITIAL_CUSTOMERS)
+  );
   const [currentUser, setCurrentUser] = useState<AppCustomer | null>(null);
   const [showUserAuthModal, setShowUserAuthModal] = useState(false);
   const [userAuthMode, setUserAuthMode] = useState<"register" | "login">("register");
